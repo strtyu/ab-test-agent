@@ -112,13 +112,13 @@
     </form>
 
     <!-- Interactive dashboard -->
-    {% if snap and snap.dashboard_path %}
+    {% if snap %}
     <a href="/tests/{{ test.id }}/dashboard" class="btn btn-outline" target="_blank">📊 Interactive Dashboard</a>
     {% endif %}
 
     <!-- Run analysis -->
-    <form method="post" action="/tests/{{ test.id }}/analyze">
-      <button type="submit" class="btn btn-success">🔬 Run Bootstrap Analysis</button>
+    <form method="post" action="/tests/{{ test.id }}/analyze" style="display:inline">
+      <button type="submit" class="btn btn-success" style="cursor:pointer">🔬 Run Bootstrap Analysis</button>
     </form>
 
     <!-- End test (only if still running) -->
