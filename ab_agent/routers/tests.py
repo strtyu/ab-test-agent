@@ -213,7 +213,7 @@ async def end_test(
 
 
 @router.post("/tests/{test_id}/analyze")
-async def run_analysis(test_id: str):
+async def run_analysis(request: Request, test_id: str):
     from ab_agent.pipeline.analysis_pipeline import run_analysis as _analyze
 
     test = TestRepo().get(test_id)
@@ -221,7 +221,22 @@ async def run_analysis(test_id: str):
         return RedirectResponse(url="/", status_code=303)
 
     config = ABTestConfig.model_validate_json(test["config_json"])
-    _analyze(test_id, config)
+    try:
+        _analyze(test_id, config)
+    except Exception as e:
+        return templates.TemplateResponse(
+            "test_detail.html",
+            {
+                "request": request,
+                "test": test,
+                "config": config,
+                "snap": SnapshotRepo().latest(test_id),
+                "ctrl_metrics": {},
+                "test_metrics": {},
+                "analyses": AnalysisRepo().list_for_test(test_id),
+                "error": f"Analysis failed: {e}",
+            },
+        )
     return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
 
 

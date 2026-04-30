@@ -14,6 +14,10 @@
 <div class="alert alert-info">Analysis is running in the background — refresh in a moment to see results.</div>
 {% endif %}
 
+{% if error is defined and error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
 <!-- Config summary -->
 <div class="card">
   <h2>Configuration</h2>
