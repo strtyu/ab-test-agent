@@ -32,12 +32,14 @@ async def health():
 
 @app.get("/debug")
 async def debug():
-    import traceback, sys
+    import traceback
     results = {}
     tests_to_try = [
         ("psycopg2", lambda: __import__("psycopg2")),
         ("db_connect", lambda: __import__("ab_agent.db.database", fromlist=["get_connection"]).get_connection()),
         ("jinja2_path", lambda: str(__import__("pathlib").Path(__file__).parent / "templates")),
+        ("test_repo_list", lambda: __import__("ab_agent.db.repository", fromlist=["TestRepo"]).TestRepo().list_all()),
+        ("templates_render", lambda: _test_template_render()),
     ]
     for name, fn in tests_to_try:
         try:
@@ -46,6 +48,15 @@ async def debug():
         except Exception as e:
             results[name] = f"ERROR: {traceback.format_exc()}"
     return results
+
+
+def _test_template_render():
+    from pathlib import Path
+    from jinja2 import Environment, FileSystemLoader
+    tmpl_dir = str(Path(__file__).parent / "templates")
+    env = Environment(loader=FileSystemLoader(tmpl_dir))
+    t = env.get_template("index.html")
+    return "OK: templates loaded"
 
 
 @app.on_event("startup")
