@@ -40,6 +40,7 @@ async def debug():
         ("jinja2_path", lambda: str(__import__("pathlib").Path(__file__).parent / "templates")),
         ("test_repo_list", lambda: __import__("ab_agent.db.repository", fromlist=["TestRepo"]).TestRepo().list_all()),
         ("templates_render", lambda: _test_template_render()),
+        ("index_render", lambda: _test_index_render()),
     ]
     for name, fn in tests_to_try:
         try:
@@ -57,6 +58,19 @@ def _test_template_render():
     env = Environment(loader=FileSystemLoader(tmpl_dir))
     t = env.get_template("index.html")
     return "OK: templates loaded"
+
+
+def _test_index_render():
+    from pathlib import Path
+    from jinja2 import Environment, FileSystemLoader
+    from ab_agent.db.repository import TestRepo, SnapshotRepo
+    import json
+    tmpl_dir = str(Path(__file__).parent / "templates")
+    env = Environment(loader=FileSystemLoader(tmpl_dir))
+    t = env.get_template("index.html")
+    tests = TestRepo().list_all()
+    result = t.render(request=None, tests=tests, previews={})
+    return f"OK: rendered {len(result)} chars"
 
 
 @app.on_event("startup")
