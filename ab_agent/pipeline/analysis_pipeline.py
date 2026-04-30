@@ -4,9 +4,8 @@ import json
 import logging
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
-
-import pandas as pd
 
 from ab_agent.bigquery.client import BQClient
 from ab_agent.bigquery.query_builder import build_query
@@ -55,16 +54,15 @@ def run_analysis(test_id: str, config: ABTestConfig) -> str:
     ctrl_m = calc_metrics(ctrl_df)
     test_m = calc_metrics(test_df)
 
-    png_path = store.screenshot_path(analysis_id, "analysis")
-    png_path = ""
+    png_path: Path | None = None
     try:
         from ab_agent.visualization.screenshot import render_summary_png
-        png_path = str(store.screenshot_path(analysis_id, "analysis"))
-        render_summary_png(ctrl_m, test_m, config, png_path)
+        p = store.screenshot_path(analysis_id, "analysis")
+        render_summary_png(ctrl_m, test_m, config, p)
+        png_path = p
     except Exception:
-        logger.debug("Screenshot render skipped (filesystem unavailable or error)")
+        logger.debug("Screenshot render skipped")
 
-    # AI narrative
     narrative = ""
     try:
         from ab_agent.agents.narrative import NarrativeAgent
@@ -92,8 +90,7 @@ def run_analysis(test_id: str, config: ABTestConfig) -> str:
         results_json=results_json,
         recommendation=recommendation,
         narrative=narrative,
-        screenshot_path=str(png_path),
-        screenshot_path=png_path,
+        screenshot_path=str(png_path) if png_path else "",
     )
 
     if config.slack_channel:
@@ -105,7 +102,7 @@ def run_analysis(test_id: str, config: ABTestConfig) -> str:
                 channel=config.slack_channel,
                 text=f"*{config.test_name}* — Analysis complete: {rec_label.get(recommendation, recommendation)}\n{narrative}",
             )
-            if png_path.exists():
+            if png_path and png_path.exists():
                 slack.upload_file(
                     channel=config.slack_channel,
                     file_path=png_path,
