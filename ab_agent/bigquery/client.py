@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -19,11 +21,17 @@ class BQClient:
         self.project = bq_cfg.get("project", "")
         credentials_path = bq_cfg.get("credentials_path", "")
 
-        cache_dir = Path(bq_cfg.get("result_cache_dir", ".bq_cache"))
+        cache_dir = Path(bq_cfg.get("result_cache_dir", "/tmp/.bq_cache"))
         cache_dir.mkdir(parents=True, exist_ok=True)
         self._cache_dir = cache_dir
 
-        if credentials_path and Path(credentials_path).exists():
+        # Support inline JSON credentials via GOOGLE_CREDENTIALS_JSON env var (for Vercel)
+        credentials_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+        if credentials_json:
+            info = json.loads(credentials_json)
+            creds = service_account.Credentials.from_service_account_info(info)
+            self._client = bigquery.Client(project=self.project, credentials=creds)
+        elif credentials_path and Path(credentials_path).exists():
             creds = service_account.Credentials.from_service_account_file(credentials_path)
             self._client = bigquery.Client(project=self.project, credentials=creds)
         else:
