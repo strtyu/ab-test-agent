@@ -32,3 +32,12 @@ async def startup():
         get_connection()
     except Exception as e:
         print(f"DB connection warning at startup: {e}")
+    from ab_agent.core.scheduler import start, restore_running_tests
+    start()
+    restore_running_tests()
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    from ab_agent.core.scheduler import stop
+    stop()

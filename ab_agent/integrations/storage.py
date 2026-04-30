@@ -6,11 +6,24 @@ from pathlib import Path
 from ab_agent.core.config_loader import get_settings
 
 
+def _writable_base() -> Path:
+    settings = get_settings()
+    candidate = Path(settings["artifacts"]["local_dir"])
+    try:
+        candidate.mkdir(parents=True, exist_ok=True)
+        test = candidate / ".write_test"
+        test.touch()
+        test.unlink()
+        return candidate
+    except (OSError, PermissionError):
+        fallback = Path("/tmp/artifacts")
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
 class ArtifactStore:
     def __init__(self) -> None:
-        settings = get_settings()
-        self._base = Path(settings["artifacts"]["local_dir"])
-        self._base.mkdir(parents=True, exist_ok=True)
+        self._base = _writable_base()
 
     def screenshot_path(self, run_id: str, suffix: str = "dashboard") -> Path:
         ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
