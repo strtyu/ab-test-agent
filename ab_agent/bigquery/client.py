@@ -21,8 +21,13 @@ class BQClient:
         self.project = bq_cfg.get("project", "")
         credentials_path = bq_cfg.get("credentials_path", "")
 
-        cache_dir = Path(bq_cfg.get("result_cache_dir", "/tmp/.bq_cache"))
-        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_dir = Path(os.environ.get("BQ_CACHE_DIR") or bq_cfg.get("result_cache_dir", "/tmp/.bq_cache"))
+        # On Vercel, only /tmp is writable — fallback if configured path fails
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            cache_dir = Path("/tmp/.bq_cache")
+            cache_dir.mkdir(parents=True, exist_ok=True)
         self._cache_dir = cache_dir
 
         # Support inline JSON credentials via GOOGLE_CREDENTIALS_JSON env var (for Vercel)
