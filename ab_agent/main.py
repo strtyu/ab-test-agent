@@ -25,6 +25,11 @@ except Exception:
 app.include_router(tests.router)
 
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 @app.on_event("startup")
 async def startup():
     try:
