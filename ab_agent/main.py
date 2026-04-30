@@ -13,6 +13,16 @@ from ab_agent.routers import tests
 
 app = FastAPI(title="A/B Test Agent", version="0.1.0")
 
+
+import traceback as _traceback
+from fastapi import Request as _Request
+from fastapi.responses import JSONResponse as _JSONResponse
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: _Request, exc: Exception):
+    tb = _traceback.format_exc()
+    return _JSONResponse(status_code=500, content={"error": str(exc), "traceback": tb})
+
 # Static files for artifact images — only mount if directory exists (not on Vercel serverless)
 try:
     from fastapi.staticfiles import StaticFiles
