@@ -30,6 +30,24 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/debug")
+async def debug():
+    import traceback, sys
+    results = {}
+    tests_to_try = [
+        ("psycopg2", lambda: __import__("psycopg2")),
+        ("db_connect", lambda: __import__("ab_agent.db.database", fromlist=["get_connection"]).get_connection()),
+        ("jinja2_path", lambda: str(__import__("pathlib").Path(__file__).parent / "templates")),
+    ]
+    for name, fn in tests_to_try:
+        try:
+            result = fn()
+            results[name] = str(result)[:200]
+        except Exception as e:
+            results[name] = f"ERROR: {traceback.format_exc()}"
+    return results
+
+
 @app.on_event("startup")
 async def startup():
     try:
