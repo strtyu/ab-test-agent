@@ -95,14 +95,15 @@ async def index(request: Request):
             except Exception:
                 pass
     return templates.TemplateResponse(
+        request,
         "index.html",
-        {"request": request, "tests": tests, "previews": previews},
+        {"tests": tests, "previews": previews},
     )
 
 
 @router.get("/tests/new", response_class=HTMLResponse)
 async def new_test_form(request: Request):
-    return templates.TemplateResponse("create_test.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "create_test.html", {"error": None})
 
 
 @router.post("/tests/create", response_class=HTMLResponse)
@@ -134,7 +135,7 @@ async def create_test(
         return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
     except Exception as e:
         return templates.TemplateResponse(
-            "create_test.html", {"request": request, "error": str(e)}
+            request, "create_test.html", {"error": str(e)}
         )
 
 
@@ -143,8 +144,9 @@ async def test_detail(request: Request, test_id: str):
     test = TestRepo().get(test_id)
     if not test:
         return templates.TemplateResponse(
+            request,
             "index.html",
-            {"request": request, "tests": [], "previews": {}, "error": f"Test {test_id} not found"},
+            {"tests": [], "previews": {}, "error": f"Test {test_id} not found"},
         )
     config = ABTestConfig.model_validate_json(test["config_json"])
     snap = SnapshotRepo().latest(test_id)
@@ -160,9 +162,9 @@ async def test_detail(request: Request, test_id: str):
             pass
 
     return templates.TemplateResponse(
+        request,
         "test_detail.html",
         {
-            "request": request,
             "test": test,
             "config": config,
             "snap": snap,
@@ -235,9 +237,9 @@ async def analysis_detail(request: Request, test_id: str, analysis_id: str):
         pass
 
     return templates.TemplateResponse(
+        request,
         "analysis_result.html",
         {
-            "request": request,
             "test": test,
             "config": config,
             "analysis": analysis,

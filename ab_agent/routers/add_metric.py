@@ -14,7 +14,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templa
 @router.get("/add-metric", response_class=HTMLResponse)
 async def add_metric_form(request: Request):
     return templates.TemplateResponse(
-        "add_metric.html", {"request": request, "result": None, "error": None}
+        request, "add_metric.html", {"result": None, "error": None}
     )
 
 
@@ -28,9 +28,9 @@ async def add_metric(
         pipeline = MetricCreationPipeline()
         metric = pipeline.run(name=metric_name, description=description)
         return templates.TemplateResponse(
+            request,
             "add_metric.html",
             {
-                "request": request,
                 "result": {
                     "name": metric.name,
                     "display_name": metric.display_name,
@@ -42,6 +42,5 @@ async def add_metric(
         )
     except Exception as e:
         return templates.TemplateResponse(
-            "add_metric.html",
-            {"request": request, "result": None, "error": str(e)},
+            request, "add_metric.html", {"result": None, "error": str(e)},
         )

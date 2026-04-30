@@ -45,11 +45,9 @@ async def end_test(
         )
         result = EndTestPipeline().run(config)
         return templates.TemplateResponse(
-            "result.html",
-            {"request": request, "result": result, "error": None, "action": "end_test"},
+            request, "result.html", {"result": result, "error": None, "action": "end_test"},
         )
     except Exception as e:
         return templates.TemplateResponse(
-            "result.html",
-            {"request": request, "result": None, "error": str(e), "action": "end_test"},
+            request, "result.html", {"result": None, "error": str(e), "action": "end_test"},
         )
