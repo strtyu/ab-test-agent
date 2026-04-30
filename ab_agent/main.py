@@ -32,12 +32,21 @@ async def startup():
         get_connection()
     except Exception as e:
         print(f"DB connection warning at startup: {e}")
-    from ab_agent.core.scheduler import start, restore_running_tests
-    start()
-    restore_running_tests()
+    # Scheduler doesn't run on Vercel serverless
+    if not os.environ.get("VERCEL"):
+        try:
+            from ab_agent.core.scheduler import start, restore_running_tests
+            start()
+            restore_running_tests()
+        except Exception as e:
+            print(f"Scheduler warning: {e}")
 
 
 @app.on_event("shutdown")
 async def shutdown():
-    from ab_agent.core.scheduler import stop
-    stop()
+    if not os.environ.get("VERCEL"):
+        try:
+            from ab_agent.core.scheduler import stop
+            stop()
+        except Exception:
+            pass
