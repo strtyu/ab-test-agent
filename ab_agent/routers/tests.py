@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Form, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pathlib import Path
 from fastapi.templating import Jinja2Templates
@@ -109,7 +109,6 @@ async def new_test_form(request: Request):
 @router.post("/tests/create", response_class=HTMLResponse)
 async def create_test(
     request: Request,
-    background_tasks: BackgroundTasks,
     test_name: str = Form(...),
     release_date: str = Form(...),
     slack_channel: str = Form(""),
@@ -131,7 +130,7 @@ async def create_test(
         )
         test_id = str(uuid.uuid4())
         TestRepo().create(test_id, config.test_name, config.model_dump_json())
-        background_tasks.add_task(_do_initial_refresh, test_id)
+        _do_initial_refresh(test_id)
         return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
     except Exception as e:
         return templates.TemplateResponse(
@@ -176,16 +175,15 @@ async def test_detail(request: Request, test_id: str):
 
 
 @router.post("/tests/{test_id}/refresh")
-async def manual_refresh(test_id: str, background_tasks: BackgroundTasks):
+async def manual_refresh(test_id: str):
     from ab_agent.pipeline.refresh_pipeline import run_refresh
-    background_tasks.add_task(run_refresh, test_id)
+    run_refresh(test_id)
     return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
 
 
 @router.post("/tests/{test_id}/end")
 async def end_test(
     test_id: str,
-    background_tasks: BackgroundTasks,
     end_date: Optional[str] = Form(None),
 ):
     test = TestRepo().get(test_id)
@@ -204,13 +202,13 @@ async def end_test(
     TestRepo().mark_ended(test_id)
 
     from ab_agent.pipeline.refresh_pipeline import run_refresh
-    background_tasks.add_task(run_refresh, test_id)
+    run_refresh(test_id)
 
     return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
 
 
 @router.post("/tests/{test_id}/analyze")
-async def run_analysis(test_id: str, background_tasks: BackgroundTasks):
+async def run_analysis(test_id: str):
     from ab_agent.pipeline.analysis_pipeline import run_analysis as _analyze
 
     test = TestRepo().get(test_id)
@@ -218,8 +216,8 @@ async def run_analysis(test_id: str, background_tasks: BackgroundTasks):
         return RedirectResponse(url="/", status_code=303)
 
     config = ABTestConfig.model_validate_json(test["config_json"])
-    background_tasks.add_task(_analyze, test_id, config)
-    return RedirectResponse(url=f"/tests/{test_id}?analyzing=1", status_code=303)
+    _analyze(test_id, config)
+    return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
 
 
 @router.get("/tests/{test_id}/analysis/{analysis_id}", response_class=HTMLResponse)
