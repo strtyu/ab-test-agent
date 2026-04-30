@@ -1,0 +1,24 @@
+# Secrets — никогда не пушить
+.env
+sa.json
+ab_agent/core/sa.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Runtime artifacts
+ab_agent.db
+.bq_cache/
+artifacts/dashboards/
+artifacts/infographics/
+artifacts/screenshots/
+
+# IDE
+.vscode/
+.idea/

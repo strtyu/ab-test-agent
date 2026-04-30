@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}A/B Test Agent{% endblock %}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f6fa; color: #2d3436; }
+    nav { background: #1a1a2e; padding: 0 2rem; display: flex; align-items: center; height: 52px; gap: 2rem; }
+    nav .brand { color: #fff; font-weight: 700; font-size: 1rem; text-decoration: none; }
+    nav a { color: #a0b4f0; text-decoration: none; font-size: .9rem; }
+    nav a:hover { color: #fff; }
+    .container { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
+    .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.08); padding: 1.5rem; margin-bottom: 1.5rem; }
+    .btn { display: inline-block; padding: .5rem 1.2rem; border-radius: 6px; border: none; cursor: pointer;
+           font-size: .88rem; font-weight: 600; text-decoration: none; transition: opacity .15s; }
+    .btn:hover { opacity: .85; }
+    .btn-primary { background: #4472C4; color: #fff; }
+    .btn-danger  { background: #dc3545; color: #fff; }
+    .btn-success { background: #00b894; color: #fff; }
+    .btn-outline { background: transparent; border: 1.5px solid #636e72; color: #636e72; }
+    .btn-sm { padding: .3rem .8rem; font-size: .8rem; }
+    .badge { display: inline-block; padding: .2rem .55rem; border-radius: 20px; font-size: .72rem; font-weight: 700; }
+    .badge-running { background: #e3f2fd; color: #1565c0; }
+    .badge-ended   { background: #fce4ec; color: #880e4f; }
+    .alert { padding: 1rem 1.2rem; border-radius: 6px; margin-bottom: 1rem; font-size: .9rem; }
+    .alert-error   { background: #fde8e8; color: #9b1c1c; border-left: 4px solid #e74c3c; }
+    .alert-info    { background: #e8f4fd; color: #1a5276; border-left: 4px solid #3498db; }
+    .alert-success { background: #d4edda; color: #155724; border-left: 4px solid #28a745; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: .55rem .8rem; text-align: left; border-bottom: 1px solid #f0f0f0; font-size: .88rem; }
+    th { font-size: .75rem; text-transform: uppercase; color: #636e72; background: #fafafa; }
+    label { display: block; font-size: .82rem; font-weight: 600; margin-bottom: .3rem; color: #444; }
+    input[type=text], input[type=date], input[type=datetime-local], textarea, select {
+      width: 100%; padding: .5rem .75rem; border: 1.5px solid #dfe6e9; border-radius: 6px;
+      font-size: .88rem; outline: none; transition: border-color .15s; background: #fff;
+    }
+    input:focus, textarea:focus, select:focus { border-color: #4472C4; }
+    textarea { resize: vertical; min-height: 80px; font-family: inherit; }
+    .form-group { margin-bottom: 1rem; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .section-label { font-weight: 700; color: #2d3a6e; font-size: .9rem; border-bottom: 2px solid #e0e6f0;
+                     padding-bottom: 6px; margin: 1.5rem 0 1rem; }
+    small { color: #888; font-size: .75rem; }
+    h1 { font-size: 1.5rem; margin-bottom: 1.2rem; color: #1a1a2e; }
+    h2 { font-size: 1.1rem; margin-bottom: .8rem; color: #2d3a6e; }
+    .sig-yes { color: #00b894; font-weight: 700; }
+    .sig-no  { color: #b2bec3; }
+    .rec-ship    { color: #00b894; font-weight: 700; }
+    .rec-no-ship { color: #d63031; font-weight: 700; }
+    .rec-inconclusive { color: #636e72; font-weight: 700; }
+    .actions { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+<nav>
+  <a class="brand" href="/">🧪 A/B Agent</a>
+  <a href="/">All Tests</a>
+  <a href="/tests/new">+ New Test</a>
+</nav>
+<div class="container">
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

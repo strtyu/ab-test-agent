@@ -1,0 +1,185 @@
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+
+from ab_agent.core.models import ABTestConfig, MetricResult
+from ab_agent.stats.multiple_testing import benjamini_hochberg
+from ab_agent.stats.tests import mann_whitney, welch_ttest, z_test_proportions
+
+# ── Metric definitions (key, label, format, higher_is_better) ─────────────
+ABS_METRICS: List[Tuple[str, str, str, bool]] = [
+    ("ups_view_users",    "Viewers",        "int",   True),
+    ("ups_ttp_users",     "TTP clicks",     "int",   True),
+    ("ups_purched_users", "Purchases",      "int",   True),
+    ("purch_amount",      "Revenue",        "money", True),
+    ("purch_count",       "Purch count",    "int",   True),
+    ("unsub12h_users",    "Unsub ≤12h",     "int",   False),
+    ("ticket_users",      "Tickets",        "int",   False),
+    ("median_diff_sec",   "Median TTP (s)", "f1",    False),
+]
+
+REL_METRICS: List[Tuple[str, str, str, bool]] = [
+    ("view_rate",           "View rate",    "pct",  True),
+    ("ttp_rate",            "TTP rate",     "pct",  True),
+    ("purch_from_ttp_rate", "Close rate",   "pct",  True),
+    ("cvr",                 "CVR",          "pct",  True),
+    ("purch_per_view",      "Purch/Viewer", "f4",   True),
+    ("unsub_rate",          "Unsub rate",   "pct",  False),
+    ("ticket_rate",         "Ticket rate",  "pct",  False),
+]
+
+ALL_METRICS = ABS_METRICS + REL_METRICS
+
+BREAKDOWN_DIMS: List[Tuple[str, str]] = [
+    ("upsell_order",   "Upsell Order"),
+    ("geo",            "Geo"),
+    ("payment_method", "Payment Method"),
+    ("subscription",   "Subscription"),
+    ("channel",        "Channel"),
+    ("age",            "Age"),
+]
+
+
+def _safe_div(a, b):
+    return (a / b) if b and b > 0 else None
+
+
+def calc_metrics(df: pd.DataFrame) -> Dict[str, Any]:
+    """Aggregate per-user DataFrame into metric dict (same as dashboard_agent._calc)."""
+    view_u  = df.loc[df["ups_view"]    == 1, "user_id"].nunique()
+    ttp_u   = df.loc[df["ups_ttp"]     == 1, "user_id"].nunique()
+    purch_u = df.loc[df["ups_purched"] == 1, "user_id"].nunique()
+    amount  = float(pd.to_numeric(df["purch_amount"], errors="coerce").sum())
+    count   = float(pd.to_numeric(df["purch_count"],  errors="coerce").sum())
+    unsub_u = df.loc[(df["unsub12h"] == 1) & (df["ups_purched"] == 1), "user_id"].nunique()
+    tick_u  = df.loc[pd.to_numeric(df["ticket_count"], errors="coerce").fillna(0).ne(0), "user_id"].nunique()
+    diffs   = pd.to_numeric(df["diff_ms"], errors="coerce").dropna()
+    med     = float(diffs.median()) / 1000 if len(diffs) else None
+
+    return {
+        "ups_view_users":      view_u,
+        "ups_ttp_users":       ttp_u,
+        "ups_purched_users":   purch_u,
+        "purch_amount":        amount,
+        "purch_count":         count,
+        "unsub12h_users":      unsub_u,
+        "ticket_users":        tick_u,
+        "median_diff_sec":     med,
+        "view_rate":           1.0,
+        "ttp_rate":            _safe_div(ttp_u, view_u),
+        "purch_from_ttp_rate": _safe_div(purch_u, ttp_u),
+        "cvr":                 _safe_div(purch_u, view_u),
+        "purch_per_view":      _safe_div(count, view_u),
+        "unsub_rate":          _safe_div(unsub_u, purch_u),
+        "ticket_rate":         _safe_div(tick_u, purch_u),
+    }
+
+
+def serialize_metrics(m: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert numpy types for JSON serialisation."""
+    out = {}
+    for k, v in m.items():
+        if v is None:
+            out[k] = None
+        elif isinstance(v, float) and (np.isnan(v) or np.isinf(v)):
+            out[k] = None
+        elif isinstance(v, np.integer):
+            out[k] = int(v)
+        elif isinstance(v, np.floating):
+            out[k] = float(v)
+        else:
+            out[k] = v
+    return out
+
+
+class StatEngine:
+    """Run statistical tests comparing control vs test on the key upsell metrics."""
+
+    def run_stat_tests(
+        self,
+        ctrl_df: pd.DataFrame,
+        test_df: pd.DataFrame,
+        config: ABTestConfig,
+    ) -> List[MetricResult]:
+        results = []
+        alpha = 0.05
+
+        # ── Proportion tests (binary 0/1 per viewer) ──────────────
+        viewers_ctrl = ctrl_df[ctrl_df["ups_view"] == 1]
+        viewers_test = test_df[test_df["ups_view"] == 1]
+        clickers_ctrl = ctrl_df[ctrl_df["ups_ttp"] == 1]
+        clickers_test = test_df[test_df["ups_ttp"] == 1]
+        purch_ctrl = ctrl_df[ctrl_df["ups_purched"] == 1]
+        purch_test = test_df[test_df["ups_purched"] == 1]
+
+        proportion_tests = [
+            ("ttp_rate",            "TTP rate",    "pct", True,  viewers_ctrl, viewers_test, "ups_ttp"),
+            ("cvr",                 "CVR",         "pct", True,  viewers_ctrl, viewers_test, "ups_purched"),
+            ("purch_from_ttp_rate", "Close rate",  "pct", True,  clickers_ctrl, clickers_test, "ups_purched"),
+            ("unsub_rate",          "Unsub rate",  "pct", False, purch_ctrl, purch_test, "unsub12h"),
+        ]
+
+        for key, label, fmt, higher, c_df, t_df, col in proportion_tests:
+            n_c, n_t = len(c_df), len(t_df)
+            if n_c < 10 or n_t < 10:
+                results.append(MetricResult(
+                    metric_key=key, label=label, fmt=fmt, higher_is_better=higher,
+                    control_value=None, test_value=None,
+                ))
+                continue
+            conv_c = int(c_df[col].sum())
+            conv_t = int(t_df[col].sum())
+            tr = z_test_proportions(n_c, n_t, conv_c, conv_t, alpha)
+            results.append(MetricResult(
+                metric_key=key, label=label, fmt=fmt, higher_is_better=higher,
+                control_value=conv_c / n_c if n_c else None,
+                test_value=conv_t / n_t if n_t else None,
+                p_value=tr.p_value,
+                is_significant=tr.p_value < alpha,
+                delta_abs=tr.ci_lower,
+            ))
+
+        # ── Revenue per viewer: continuous (Mann-Whitney) ──────────
+        rev_c = pd.to_numeric(viewers_ctrl["purch_amount"], errors="coerce").fillna(0)
+        rev_t = pd.to_numeric(viewers_test["purch_amount"], errors="coerce").fillna(0)
+        if len(rev_c) >= 10 and len(rev_t) >= 10:
+            tr = mann_whitney(rev_c.tolist(), rev_t.tolist(), alpha)
+            results.append(MetricResult(
+                metric_key="purch_amount", label="Revenue", fmt="money", higher_is_better=True,
+                control_value=float(rev_c.sum()),
+                test_value=float(rev_t.sum()),
+                p_value=tr.p_value,
+                is_significant=tr.p_value < alpha,
+            ))
+        else:
+            results.append(MetricResult(
+                metric_key="purch_amount", label="Revenue", fmt="money", higher_is_better=True,
+                control_value=None, test_value=None,
+            ))
+
+        # ── TTP time: continuous (Mann-Whitney on viewers with diff_ms) ──
+        diff_c = pd.to_numeric(viewers_ctrl["diff_ms"], errors="coerce").dropna() / 1000
+        diff_t = pd.to_numeric(viewers_test["diff_ms"], errors="coerce").dropna() / 1000
+        if len(diff_c) >= 10 and len(diff_t) >= 10:
+            tr = mann_whitney(diff_c.tolist(), diff_t.tolist(), alpha)
+            results.append(MetricResult(
+                metric_key="median_diff_sec", label="Median TTP (s)", fmt="f1", higher_is_better=False,
+                control_value=float(diff_c.median()),
+                test_value=float(diff_t.median()),
+                p_value=tr.p_value,
+                is_significant=tr.p_value < alpha,
+            ))
+
+        # Apply BH correction across all results with a p-value
+        p_values = [r.p_value for r in results if r.p_value is not None]
+        if p_values:
+            all_pvals = [r.p_value if r.p_value is not None else 1.0 for r in results]
+            corrected = benjamini_hochberg(all_pvals, alpha)
+            for r, sig in zip(results, corrected):
+                if r.p_value is not None:
+                    r.is_significant = sig
+
+        return results

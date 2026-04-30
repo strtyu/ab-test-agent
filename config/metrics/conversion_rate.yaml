@@ -1,0 +1,37 @@
+name: conversion_rate
+display_name: "Conversion Rate"
+description: "Percentage of users who completed a target conversion event"
+metric_type: proportion
+stat_method: z_test_proportions
+is_custom: false
+version: 1
+created_at: "2024-01-01T00:00:00"
+created_by: "seed"
+
+sql_template: |
+  conversion_rate AS (
+    SELECT
+      ea.user_id,
+      ea.variant,
+      MAX(CASE WHEN e.event_name = 'purchase' THEN 1 ELSE 0 END) AS value
+    FROM `{{ bq_project }}.{{ bq_dataset }}.{{ assignments_table }}` ea
+    LEFT JOIN `{{ bq_project }}.{{ bq_dataset }}.{{ events_table }}` e
+      ON ea.user_id = e.user_id
+      AND DATE(e.event_timestamp) BETWEEN '{{ start_date }}' AND '{{ end_date }}'
+    WHERE ea.experiment_id = '{{ experiment_id }}'
+      AND DATE(ea.assigned_at) BETWEEN '{{ start_date }}' AND '{{ end_date }}'
+      {% if countries %}AND ea.country IN ({{ countries | join(', ') | surround("'") }}){% endif %}
+      {% if platforms %}AND ea.platform IN ({{ platforms | join(', ') | surround("'") }}){% endif %}
+    GROUP BY ea.user_id, ea.variant
+  )
+
+covariate_sql: null
+
+viz_config:
+  chart_type: bar
+  y_axis_label: "Conversion Rate"
+  y_axis_format: ".1%"
+  color_control: "#636EFA"
+  color_variant: "#EF553B"
+  show_confidence_interval: true
+  higher_is_better: true

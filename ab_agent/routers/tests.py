@@ -1,0 +1,254 @@
+from __future__ import annotations
+
+import json
+import uuid
+from datetime import datetime, timezone
+from typing import List, Optional
+
+from fastapi import APIRouter, BackgroundTasks, Form, Request
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+
+from ab_agent.agents.filter_agent import FilterAgent
+from ab_agent.core.models import ABTestConfig, OrderConfig, QueryFilters, VersionGroup
+from ab_agent.db.repository import AnalysisRepo, SnapshotRepo, TestRepo
+
+router = APIRouter()
+templates = Jinja2Templates(directory="ab_agent/templates")
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────
+
+def _do_initial_refresh(test_id: str) -> None:
+    from ab_agent.pipeline.refresh_pipeline import run_refresh
+    run_refresh(test_id)
+
+def _parse_orders(text: str) -> List[OrderConfig]:
+    orders = []
+    for line in (text or "").strip().splitlines():
+        line = line.strip()
+        if not line or ":" not in line:
+            continue
+        num_str, rebills_str = line.split(":", 1)
+        try:
+            order_num = int(num_str.strip())
+            rebill_counts = [int(x.strip()) for x in rebills_str.split(",") if x.strip()]
+            if rebill_counts:
+                orders.append(OrderConfig(order_number=order_num, rebill_counts=rebill_counts))
+        except ValueError:
+            continue
+    return orders
+
+
+def _parse_versions(text: str) -> List[str]:
+    return [v.strip() for v in (text or "").split(",") if v.strip()]
+
+
+def _build_config(
+    test_name, release_date_str, slack_channel,
+    ctrl_versions_str, ctrl_orders_str, ctrl_extra_filter,
+    test_versions_str, test_orders_str, test_extra_filter,
+    extra_conditions_str, ai_filter_enabled=False,
+) -> ABTestConfig:
+    release_date = datetime.fromisoformat(release_date_str).replace(tzinfo=timezone.utc)
+    ctrl_versions = _parse_versions(ctrl_versions_str)
+    ctrl_orders   = _parse_orders(ctrl_orders_str)
+    test_versions = _parse_versions(test_versions_str)
+    test_orders   = _parse_orders(test_orders_str)
+
+    raw_conditions = [l.strip() for l in (extra_conditions_str or "").splitlines() if l.strip()]
+    conditions = raw_conditions
+    if ai_filter_enabled and raw_conditions:
+        try:
+            conditions = FilterAgent().resolve_all(raw_conditions)
+        except Exception:
+            pass
+
+    return ABTestConfig(
+        test_name=test_name,
+        release_date=release_date,
+        control=VersionGroup(versions=ctrl_versions, orders=ctrl_orders,
+                             extra_filter=ctrl_extra_filter.strip() or None),
+        test=VersionGroup(versions=test_versions, orders=test_orders,
+                          extra_filter=test_extra_filter.strip() or None),
+        filters=QueryFilters(extra_conditions=conditions),
+        slack_channel=slack_channel,
+    )
+
+
+# ── Routes ─────────────────────────────────────────────────────────────────
+
+@router.get("/", response_class=HTMLResponse)
+async def index(request: Request):
+    tests = TestRepo().list_all()
+    # Attach latest snapshot preview metrics
+    snap_repo = SnapshotRepo()
+    previews = {}
+    for t in tests:
+        snap = snap_repo.latest(t["id"])
+        if snap:
+            try:
+                ctrl = json.loads(snap["ctrl_metrics_json"] or "{}")
+                test = json.loads(snap["test_metrics_json"] or "{}")
+                previews[t["id"]] = {"ctrl": ctrl, "test": test, "updated_at": snap["created_at"]}
+            except Exception:
+                pass
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "tests": tests, "previews": previews},
+    )
+
+
+@router.get("/tests/new", response_class=HTMLResponse)
+async def new_test_form(request: Request):
+    return templates.TemplateResponse("create_test.html", {"request": request, "error": None})
+
+
+@router.post("/tests/create", response_class=HTMLResponse)
+async def create_test(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    test_name: str = Form(...),
+    release_date: str = Form(...),
+    slack_channel: str = Form(""),
+    ctrl_versions: str = Form(...),
+    ctrl_orders: str = Form(...),
+    ctrl_extra_filter: str = Form(""),
+    test_versions: str = Form(...),
+    test_orders: str = Form(...),
+    test_extra_filter: str = Form(""),
+    extra_conditions: str = Form(""),
+    ai_filter: Optional[str] = Form(None),
+):
+    try:
+        config = _build_config(
+            test_name, release_date, slack_channel,
+            ctrl_versions, ctrl_orders, ctrl_extra_filter,
+            test_versions, test_orders, test_extra_filter,
+            extra_conditions, ai_filter_enabled=(ai_filter == "1"),
+        )
+        test_id = str(uuid.uuid4())
+        TestRepo().create(test_id, config.test_name, config.model_dump_json())
+        background_tasks.add_task(_do_initial_refresh, test_id)
+        return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
+    except Exception as e:
+        return templates.TemplateResponse(
+            "create_test.html", {"request": request, "error": str(e)}
+        )
+
+
+@router.get("/tests/{test_id}", response_class=HTMLResponse)
+async def test_detail(request: Request, test_id: str):
+    test = TestRepo().get(test_id)
+    if not test:
+        return templates.TemplateResponse(
+            "index.html",
+            {"request": request, "tests": [], "previews": {}, "error": f"Test {test_id} not found"},
+        )
+    config = ABTestConfig.model_validate_json(test["config_json"])
+    snap = SnapshotRepo().latest(test_id)
+    analyses = AnalysisRepo().list_for_test(test_id)
+
+    ctrl_metrics = {}
+    test_metrics = {}
+    if snap:
+        try:
+            ctrl_metrics = json.loads(snap["ctrl_metrics_json"] or "{}")
+            test_metrics = json.loads(snap["test_metrics_json"] or "{}")
+        except Exception:
+            pass
+
+    return templates.TemplateResponse(
+        "test_detail.html",
+        {
+            "request": request,
+            "test": test,
+            "config": config,
+            "snap": snap,
+            "ctrl_metrics": ctrl_metrics,
+            "test_metrics": test_metrics,
+            "analyses": analyses,
+        },
+    )
+
+
+@router.post("/tests/{test_id}/refresh")
+async def manual_refresh(test_id: str, background_tasks: BackgroundTasks):
+    from ab_agent.pipeline.refresh_pipeline import run_refresh
+    background_tasks.add_task(run_refresh, test_id)
+    return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
+
+
+@router.post("/tests/{test_id}/end")
+async def end_test(
+    test_id: str,
+    background_tasks: BackgroundTasks,
+    end_date: Optional[str] = Form(None),
+):
+    test = TestRepo().get(test_id)
+    if not test:
+        return RedirectResponse(url="/", status_code=303)
+
+    config = ABTestConfig.model_validate_json(test["config_json"])
+    if end_date:
+        config = config.model_copy(
+            update={"end_date": datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)}
+        )
+    else:
+        config = config.model_copy(update={"end_date": datetime.utcnow().replace(tzinfo=timezone.utc)})
+
+    TestRepo().update_config(test_id, config.model_dump_json())
+    TestRepo().mark_ended(test_id)
+
+    from ab_agent.pipeline.refresh_pipeline import run_refresh
+    background_tasks.add_task(run_refresh, test_id)
+
+    return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
+
+
+@router.post("/tests/{test_id}/analyze")
+async def run_analysis(test_id: str, background_tasks: BackgroundTasks):
+    from ab_agent.pipeline.analysis_pipeline import run_analysis as _analyze
+
+    test = TestRepo().get(test_id)
+    if not test:
+        return RedirectResponse(url="/", status_code=303)
+
+    config = ABTestConfig.model_validate_json(test["config_json"])
+    background_tasks.add_task(_analyze, test_id, config)
+    return RedirectResponse(url=f"/tests/{test_id}?analyzing=1", status_code=303)
+
+
+@router.get("/tests/{test_id}/analysis/{analysis_id}", response_class=HTMLResponse)
+async def analysis_detail(request: Request, test_id: str, analysis_id: str):
+    test = TestRepo().get(test_id)
+    analysis = AnalysisRepo().get(analysis_id)
+    if not analysis:
+        return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
+
+    config = ABTestConfig.model_validate_json(test["config_json"]) if test else None
+    results = []
+    try:
+        results = json.loads(analysis["results_json"] or "[]")
+    except Exception:
+        pass
+
+    return templates.TemplateResponse(
+        "analysis_result.html",
+        {
+            "request": request,
+            "test": test,
+            "config": config,
+            "analysis": analysis,
+            "results": results,
+        },
+    )
+
+
+@router.get("/tests/{test_id}/dashboard")
+async def test_dashboard(test_id: str):
+    snap = SnapshotRepo().latest(test_id)
+    if not snap or not snap.get("dashboard_html"):
+        return HTMLResponse("<h2>No dashboard available yet. Try refreshing.</h2>", status_code=404)
+    return HTMLResponse(content=snap["dashboard_html"])

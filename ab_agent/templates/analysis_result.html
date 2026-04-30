@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Analysis — {{ test.test_name if test else 'Result' }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:1rem">
+  <a href="/tests/{{ test.id if test else '' }}" style="color:#888;font-size:.82rem;text-decoration:none">← Back to {{ test.test_name if test else 'Test' }}</a>
+</div>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+    <h1 style="margin:0">Bootstrap Analysis</h1>
+    <span style="font-size:.8rem;color:#888">{{ analysis.created_at[:16] }} UTC</span>
+  </div>
+  {% if config %}
+  <p style="margin-top:.4rem;color:#636e72;font-size:.88rem">
+    Control: <strong>{{ config.control.versions | join(", ") }}</strong>
+    &nbsp;vs&nbsp;
+    Test: <strong>{{ config.test.versions | join(", ") }}</strong>
+  </p>
+  {% endif %}
+</div>
+
+<!-- Recommendation -->
+<div class="card" style="text-align:center;padding:2rem">
+  {% if analysis.recommendation == 'ship' %}
+  <div style="font-size:2.5rem">✅</div>
+  <div class="rec-ship" style="font-size:1.6rem;margin-top:.5rem">SHIP IT</div>
+  <p style="color:#636e72;margin-top:.5rem;font-size:.9rem">Primary metrics show a positive, significant improvement.</p>
+  {% elif analysis.recommendation == 'do_not_ship' %}
+  <div style="font-size:2.5rem">❌</div>
+  <div class="rec-no-ship" style="font-size:1.6rem;margin-top:.5rem">DO NOT SHIP</div>
+  <p style="color:#636e72;margin-top:.5rem;font-size:.9rem">Primary metrics show a significant negative impact.</p>
+  {% else %}
+  <div style="font-size:2.5rem">❓</div>
+  <div class="rec-inconclusive" style="font-size:1.6rem;margin-top:.5rem">INCONCLUSIVE</div>
+  <p style="color:#636e72;margin-top:.5rem;font-size:.9rem">No significant signal on primary metrics yet.</p>
+  {% endif %}
+</div>
+
+<!-- AI Narrative -->
+{% if analysis.narrative %}
+<div class="card">
+  <h2>AI Narrative</h2>
+  <p style="line-height:1.75;color:#333;white-space:pre-wrap;font-size:.92rem">{{ analysis.narrative }}</p>
+</div>
+{% endif %}
+
+<!-- Metric results table -->
+{% if results %}
+<div class="card">
+  <h2>Metric Results</h2>
+  <div style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th style="color:#1664F5">Control</th>
+          <th style="color:#F77F00">Test</th>
+          <th>Δ Absolute</th>
+          <th>Δ %</th>
+          <th>p-value</th>
+          <th>Significant</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in results %}
+        {% set cv = r.control_value %}
+        {% set tv = r.test_value %}
+        {% set delta = r.delta_abs %}
+        {% set hi = r.higher_is_better %}
+        {% set good = (hi and delta is not none and delta > 0) or (not hi and delta is not none and delta < 0) %}
+        {% set bad  = (hi and delta is not none and delta < 0) or (not hi and delta is not none and delta > 0) %}
+        {% set delta_color = '#00b894' if good else ('#d63031' if bad else '#636e72') %}
+        {% set dpct = (delta / cv * 100) if (cv is not none and cv != 0 and delta is not none) else none %}
+        <tr>
+          <td style="font-weight:600">{{ r.label }}</td>
+          <td style="color:#1664F5">
+            {% if cv is not none %}
+              {% if r.fmt == 'pct' %}{{ "%.2f"|format(cv * 100) }}%
+              {% elif r.fmt == 'money' %}${{ "%.2f"|format(cv) }}
+              {% elif r.fmt == 'int' %}{{ "%.0f"|format(cv) }}
+              {% else %}{{ "%.4f"|format(cv) }}{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td style="color:#F77F00">
+            {% if tv is not none %}
+              {% if r.fmt == 'pct' %}{{ "%.2f"|format(tv * 100) }}%
+              {% elif r.fmt == 'money' %}${{ "%.2f"|format(tv) }}
+              {% elif r.fmt == 'int' %}{{ "%.0f"|format(tv) }}
+              {% else %}{{ "%.4f"|format(tv) }}{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td style="color:{{ delta_color }}">
+            {% if delta is not none %}
+              {% if r.fmt == 'pct' %}{{ "%+.2f"|format(delta * 100) }}%
+              {% elif r.fmt == 'money' %}{{ "%+.2f"|format(delta) }}
+              {% elif r.fmt == 'int' %}{{ "%+.0f"|format(delta) }}
+              {% else %}{{ "%+.4f"|format(delta) }}{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td style="color:{{ delta_color }}">
+            {% if dpct is not none %}{{ "%+.1f"|format(dpct) }}%{% else %}—{% endif %}
+          </td>
+          <td>{{ "%.4f"|format(r.p_value) if r.p_value is not none else "—" }}</td>
+          <td>
+            {% if r.is_significant %}
+            <span class="sig-yes">✓ YES</span>
+            {% else %}
+            <span class="sig-no">NO</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:.75rem;color:#aaa;margin-top:.75rem">
+    Bootstrap, {{ "{:,}".format(10000) }} iterations, 95% one-sided CI.
+    Significance = CI excludes 0 on both sides.
+  </p>
+</div>
+{% endif %}
+
+<!-- Screenshot -->
+{% if analysis.screenshot_path %}
+{% set fname = analysis.screenshot_path.replace('\\', '/').split('/')[-1] %}
+<div class="card">
+  <h2>Summary Chart</h2>
+  <img src="/artifacts/screenshots/{{ fname }}"
+       style="max-width:100%;border-radius:6px;display:block"
+       alt="Analysis chart"
+       onerror="this.parentElement.style.display='none'" />
+</div>
+{% endif %}
+
+<div style="text-align:right;margin-top:.5rem">
+  <a href="/tests/{{ test.id if test else '' }}" class="btn btn-outline">← Back to Test</a>
+</div>
+{% endblock %}

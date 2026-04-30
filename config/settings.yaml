@@ -1,0 +1,22 @@
+llm:
+  provider: openrouter
+  base_url: https://openrouter.ai/api/v1
+  model: anthropic/claude-sonnet-4-6
+  max_tokens: 8096
+  temperature: 0.2
+  max_retries: 3
+
+bigquery:
+  project: ${BQ_PROJECT:-hopeful-list-429812-f3}
+  credentials_path: ${GOOGLE_APPLICATION_CREDENTIALS:-sa.json}
+  result_cache_dir: ./.bq_cache
+
+slack:
+  default_channel: ${SLACK_DEFAULT_CHANNEL:-#ab-results}
+  post_screenshots: true
+
+artifacts:
+  local_dir: ./artifacts
+
+db:
+  path: ${SQLITE_DB_PATH:-./ab_agent.db}

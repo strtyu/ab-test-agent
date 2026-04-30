@@ -1,0 +1,38 @@
+-- Base A/B experiment query
+-- Joins experiment_assignments with events table
+-- CTEs for each metric are appended dynamically
+
+WITH experiment_users AS (
+  SELECT
+    user_id,
+    variant,
+    assigned_at,
+    country,
+    platform
+  FROM `{{ bq_project }}.{{ bq_dataset }}.{{ assignments_table }}`
+  WHERE experiment_id = '{{ experiment_id }}'
+    AND variant IN ('{{ control_name }}', '{{ variant_name }}')
+    AND DATE(assigned_at) BETWEEN '{{ start_date }}' AND '{{ end_date }}'
+    {% if countries %}
+    AND country IN ({{ countries | map('tojson') | join(', ') }})
+    {% endif %}
+    {% if platforms %}
+    AND platform IN ({{ platforms | map('tojson') | join(', ') }})
+    {% endif %}
+    {% if segments %}
+    AND user_segment IN ({{ segments | map('tojson') | join(', ') }})
+    {% endif %}
+),
+
+{{ metric_ctes }}
+
+SELECT
+  m.user_id,
+  m.variant,
+  {% for metric in metrics %}
+  m_{{ metric.name }}.value AS {{ metric.name }}{% if not loop.last %},{% endif %}
+  {% endfor %}
+FROM experiment_users m
+{% for metric in metrics %}
+LEFT JOIN {{ metric.name }} m_{{ metric.name }} USING (user_id, variant)
+{% endfor %}

@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ab-test-agent"
+version = "0.1.0"
+description = "AI agent system for automated A/B test analysis"
+requires-python = ">=3.10"
+dependencies = [
+    "openai>=1.40.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "jinja2>=3.1.0",
+    "python-multipart>=0.0.9",
+    "slack-sdk>=3.27.0",
+    "pyyaml>=6.0",
+    "google-cloud-bigquery>=3.30.0",
+    "pandas>=2.0",
+    "matplotlib>=3.7",
+    "scipy>=1.10",
+    "pydantic>=2.0",
+    "tenacity>=8.0",
+    "python-dotenv>=1.0",
+    "psycopg2-binary>=2.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+ab = "ab_agent.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ab_agent*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

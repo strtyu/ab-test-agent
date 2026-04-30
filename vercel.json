@@ -1,0 +1,14 @@
+{
+  "builds": [
+    {
+      "src": "ab_agent/main.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "ab_agent/main.py"
+    }
+  ]
+}

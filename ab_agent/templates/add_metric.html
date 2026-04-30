@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title_suffix %} — Add Metric{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Add Custom Metric</h1>
+  <p style="color:#555;font-size:14px;margin-bottom:20px">
+    Describe a new metric in plain language. The AI will automatically generate the BigQuery SQL,
+    visualization code, and statistical test — then register it for use in analysis.
+  </p>
+
+  {% if error %}
+  <div class="alert alert-error">{{ error }}</div>
+  {% endif %}
+
+  {% if result %}
+  <div class="alert alert-success">
+    <strong>✓ Metric '{{ result.display_name }}' successfully created!</strong><br />
+    Type: <code>{{ result.metric_type }}</code> &nbsp;|&nbsp;
+    Statistical test: <code>{{ result.stat_method }}</code><br /><br />
+    It's now available in the <a href="/">analysis form</a>.
+  </div>
+  {% endif %}
+
+  <form method="post" action="/add-metric">
+    <label>Metric Name <small>snake_case, e.g. day2_retention</small></label>
+    <input type="text" name="metric_name" placeholder="day2_retention" required pattern="[a-z0-9_]+" />
+
+    <label>Description <small>Describe clearly how this metric is calculated</small></label>
+    <textarea name="description" rows="4"
+      placeholder="Percentage of users who open the app again exactly 2 days after their first session. A user is counted as retained if they have any event on day 2."
+      required></textarea>
+
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">Generate &amp; Register Metric</button>
+      <a href="/" class="btn" style="background:#e0e6f0;color:#444">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="opacity:0.8">
+  <h2>How it works</h2>
+  <ol style="font-size:14px;line-height:2;padding-left:20px;color:#555">
+    <li>AI classifies the metric type (proportion / continuous / count)</li>
+    <li>AI generates a BigQuery SQL CTE for the metric</li>
+    <li>The SQL is validated via BigQuery dry-run (auto-retries on error)</li>
+    <li>AI generates a Plotly chart function and validates it with synthetic data</li>
+    <li>The metric is saved to YAML and hot-loaded — no server restart needed</li>
+  </ol>
+</div>
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}New Test{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Create A/B Test</h1>
+
+  {% if error %}
+  <div class="alert alert-error">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/tests/create">
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Test Name</label>
+        <input type="text" name="test_name" placeholder="e.g. Upsell Test 15 PayPal" required />
+      </div>
+      <div class="form-group">
+        <label>Release Date (UTC)</label>
+        <input type="datetime-local" name="release_date" required />
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Slack Channel <small>leave empty to skip Slack</small></label>
+      <input type="text" name="slack_channel" placeholder="#ab-results" />
+    </div>
+
+    <div class="section-label">Control Group</div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Control Versions <small>comma-separated, e.g. u15.4.1, u15.4.2</small></label>
+        <input type="text" name="ctrl_versions" placeholder="u15.4.1" required />
+      </div>
+      <div class="form-group">
+        <label>Control Orders <small>one per line: ORDER_NUM: REBILL1,REBILL2 &mdash; e.g. "1: -1,-2,-3"</small></label>
+        <textarea name="ctrl_orders" placeholder="1: -1,-2,-3&#10;2: -1" required></textarea>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Control Extra SQL Filter <small>optional BQ WHERE condition for control group only</small></label>
+      <input type="text" name="ctrl_extra_filter" placeholder="json_value(fun.event_metadata, '$.channel') = 'primer'" />
+    </div>
+
+    <div class="section-label">Test Group</div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Test Versions <small>comma-separated</small></label>
+        <input type="text" name="test_versions" placeholder="u15.4.2" required />
+      </div>
+      <div class="form-group">
+        <label>Test Orders <small>one per line: ORDER_NUM: REBILL1,REBILL2</small></label>
+        <textarea name="test_orders" placeholder="1: -1,-2,-3&#10;2: -1" required></textarea>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Test Extra SQL Filter <small>optional BQ WHERE condition for test group only</small></label>
+      <input type="text" name="test_extra_filter" placeholder="optional" />
+    </div>
+
+    <div class="section-label">Global Filters <small style="font-weight:400">(applied to both groups — KZ and bad IP always excluded)</small></div>
+
+    <div class="form-group">
+      <label>Extra WHERE Conditions <small>one SQL condition per line</small></label>
+      <textarea name="extra_conditions"
+        placeholder="json_value(fun.event_metadata, '$.payment_method') like '%paypal%'&#10;fun.country_code not in ('RU')"></textarea>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:1rem">
+      <input type="checkbox" name="ai_filter" value="1" id="ai_filter" style="width:auto" />
+      <label for="ai_filter" style="margin:0;cursor:pointer;font-weight:400">
+        Use AI to convert natural-language filter descriptions to SQL
+        <small style="display:inline;margin-left:.4rem">(writes SQL WHERE conditions from plain text)</small>
+      </label>
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">Create Test &amp; Start Monitoring</button>
+      <a href="/" class="btn btn-outline">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

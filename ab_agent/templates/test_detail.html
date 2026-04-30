@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}{{ test.test_name }}{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem">
+  <div>
+    <a href="/" style="color:#888;font-size:.82rem;text-decoration:none">← All Tests</a>
+    <h1 style="margin-top:.3rem">{{ test.test_name }}</h1>
+  </div>
+  <span class="badge badge-{{ test.status }}" style="font-size:.85rem;padding:.35rem .8rem">{{ test.status }}</span>
+</div>
+
+{% if request.query_params.get('analyzing') %}
+<div class="alert alert-info">Analysis is running in the background — refresh in a moment to see results.</div>
+{% endif %}
+
+<!-- Config summary -->
+<div class="card">
+  <h2>Configuration</h2>
+  <div class="form-row">
+    <div>
+      <p style="font-size:.82rem;color:#636e72;margin-bottom:.25rem">Release Date</p>
+      <p style="font-weight:600">{{ config.release_date.strftime('%Y-%m-%d %H:%M') }} UTC</p>
+    </div>
+    <div>
+      <p style="font-size:.82rem;color:#636e72;margin-bottom:.25rem">End Date</p>
+      <p style="font-weight:600">{{ config.end_date.strftime('%Y-%m-%d %H:%M') ~ ' UTC' if config.end_date else '—' }}</p>
+    </div>
+  </div>
+  <div class="form-row" style="margin-top:1rem">
+    <div>
+      <p style="font-size:.82rem;color:#636e72;margin-bottom:.25rem">Control Versions</p>
+      <p style="font-weight:600">{{ config.control.versions | join(", ") }}</p>
+      <p style="font-size:.78rem;color:#888;margin-top:.2rem">
+        Orders:
+        {% for o in config.control.orders %}{{ o.order_number }}: {{ o.rebill_counts | join(",") }}{% if not loop.last %} | {% endif %}{% endfor %}
+      </p>
+    </div>
+    <div>
+      <p style="font-size:.82rem;color:#636e72;margin-bottom:.25rem">Test Versions</p>
+      <p style="font-weight:600">{{ config.test.versions | join(", ") }}</p>
+      <p style="font-size:.78rem;color:#888;margin-top:.2rem">
+        Orders:
+        {% for o in config.test.orders %}{{ o.order_number }}: {{ o.rebill_counts | join(",") }}{% if not loop.last %} | {% endif %}{% endfor %}
+      </p>
+    </div>
+  </div>
+  {% if config.filters.extra_conditions %}
+  <div style="margin-top:1rem">
+    <p style="font-size:.82rem;color:#636e72;margin-bottom:.25rem">Extra Filters</p>
+    {% for cond in config.filters.extra_conditions %}
+    <code style="display:block;font-size:.78rem;background:#f5f6fa;padding:.2rem .4rem;border-radius:3px;margin:.1rem 0">{{ cond }}</code>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- Latest snapshot metrics -->
+{% if snap %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem">
+    <h2 style="margin:0">Latest Snapshot</h2>
+    <span style="font-size:.78rem;color:#888">{{ snap.created_at[:16] }} UTC</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th>Control</th>
+        <th>Test</th>
+        <th>Δ</th>
+        <th>Δ %</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for key in ['cvr', 'ttp_rate', 'close_rate', 'gain_per_view', 'aov', 'avg_purchases', 'ltv', 'unsub_on_view', 'unsub_on_purch', 'ticket_all', 'ticket_purch'] %}
+      {% if key in ctrl_metrics and key in test_metrics %}
+      {% set cv = ctrl_metrics[key] %}
+      {% set tv = test_metrics[key] %}
+      {% set delta = tv - cv if cv is not none and tv is not none else none %}
+      {% set dpct = (delta / cv * 100) if delta is not none and cv and cv != 0 else none %}
+      <tr>
+        <td style="font-weight:500">{{ key }}</td>
+        <td style="color:#1664F5">{{ "%.4f"|format(cv) if cv is not none else "—" }}</td>
+        <td style="color:#F77F00">{{ "%.4f"|format(tv) if tv is not none else "—" }}</td>
+        <td style="color:{% if delta is not none and delta > 0 %}#00b894{% elif delta is not none and delta < 0 %}#d63031{% else %}#636e72{% endif %}">
+          {% if delta is not none %}{{ "%+.4f"|format(delta) }}{% else %}—{% endif %}
+        </td>
+        <td style="color:{% if dpct is not none and dpct > 0 %}#00b894{% elif dpct is not none and dpct < 0 %}#d63031{% else %}#636e72{% endif %}">
+          {% if dpct is not none %}{{ "%+.1f%%"|format(dpct) }}{% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card" style="color:#888;text-align:center;padding:2rem">
+  No snapshot yet — the first refresh runs shortly after creation.
+</div>
+{% endif %}
+
+<!-- Actions -->
+<div class="card">
+  <h2>Actions</h2>
+  <div class="actions">
+
+    <!-- Refresh now -->
+    <form method="post" action="/tests/{{ test.id }}/refresh">
+      <button type="submit" class="btn btn-outline">↻ Refresh Now</button>
+    </form>
+
+    <!-- Interactive dashboard -->
+    {% if snap and snap.dashboard_path %}
+    <a href="/tests/{{ test.id }}/dashboard" class="btn btn-outline" target="_blank">📊 Interactive Dashboard</a>
+    {% endif %}
+
+    <!-- Run analysis -->
+    <form method="post" action="/tests/{{ test.id }}/analyze">
+      <button type="submit" class="btn btn-success">🔬 Run Bootstrap Analysis</button>
+    </form>
+
+    <!-- End test (only if still running) -->
+    {% if test.status == 'running' %}
+    <form method="post" action="/tests/{{ test.id }}/end" style="display:flex;gap:.5rem;align-items:center">
+      <input type="datetime-local" name="end_date"
+             style="width:auto;padding:.4rem .6rem;font-size:.82rem"
+             title="Leave empty to use now" />
+      <button type="submit" class="btn btn-danger">⏹ End Test</button>
+    </form>
+    {% endif %}
+
+  </div>
+</div>
+
+<!-- Past analyses -->
+{% if analyses %}
+<div class="card">
+  <h2>Bootstrap Analyses</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Recommendation</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in analyses %}
+      <tr>
+        <td>{{ a.created_at[:16] }} UTC</td>
+        <td>
+          {% if a.recommendation == 'ship' %}
+          <span class="rec-ship">✅ SHIP</span>
+          {% elif a.recommendation == 'do_not_ship' %}
+          <span class="rec-no-ship">❌ DO NOT SHIP</span>
+          {% else %}
+          <span class="rec-inconclusive">❓ INCONCLUSIVE</span>
+          {% endif %}
+        </td>
+        <td>
+          <a href="/tests/{{ test.id }}/analysis/{{ a.id }}" class="btn btn-outline btn-sm">View</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

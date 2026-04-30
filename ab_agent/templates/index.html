@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}A/B Tests{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.2rem">
+  <h1 style="margin:0">A/B Tests</h1>
+  <a href="/tests/new" class="btn btn-primary">+ New Test</a>
+</div>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+{% if not tests %}
+<div class="card" style="text-align:center;padding:3rem;color:#636e72">
+  <p style="font-size:1.1rem;margin-bottom:1rem">No tests yet.</p>
+  <a href="/tests/new" class="btn btn-primary">Create your first test</a>
+</div>
+{% else %}
+{% for t in tests %}
+{% set prev = previews.get(t.id, {}) %}
+{% set ctrl = prev.get('ctrl', {}) %}
+{% set test = prev.get('test', {}) %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <span class="badge badge-{{ t.status }}">{{ t.status }}</span>
+      <a href="/tests/{{ t.id }}" style="font-size:1.1rem;font-weight:700;color:#1a1a2e;text-decoration:none;margin-left:.5rem">
+        {{ t.test_name }}
+      </a>
+    </div>
+    <div style="font-size:.78rem;color:#888;text-align:right">
+      Created: {{ t.created_at[:16] }} UTC
+      {% if t.ended_at %}<br>Ended: {{ t.ended_at[:16] }} UTC{% endif %}
+    </div>
+  </div>
+
+  {% if ctrl %}
+  <div style="margin-top:1rem;overflow-x:auto">
+    <table>
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>Control</th>
+          <th>Test</th>
+          <th>Δ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for key in ['cvr', 'ttp_rate', 'gain_per_view', 'aov', 'avg_purchases'] %}
+        {% if key in ctrl and key in test %}
+        {% set cv = ctrl[key] %}
+        {% set tv = test[key] %}
+        {% set delta = tv - cv if cv is not none and tv is not none else none %}
+        <tr>
+          <td>{{ key }}</td>
+          <td>{{ "%.4f"|format(cv) if cv is not none else "—" }}</td>
+          <td>{{ "%.4f"|format(tv) if tv is not none else "—" }}</td>
+          <td style="color:{% if delta is not none and delta > 0 %}#00b894{% elif delta is not none and delta < 0 %}#d63031{% else %}#636e72{% endif %}">
+            {% if delta is not none %}{{ "%+.4f"|format(delta) }}{% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if prev.get('updated_at') %}
+    <p style="font-size:.73rem;color:#aaa;margin-top:.4rem">Last updated: {{ prev.updated_at[:16] }} UTC</p>
+    {% endif %}
+  </div>
+  {% else %}
+  <p style="color:#aaa;font-size:.85rem;margin-top:.75rem">No data yet — refresh pending.</p>
+  {% endif %}
+
+  <div class="actions">
+    <a href="/tests/{{ t.id }}" class="btn btn-outline btn-sm">View Details</a>
+    <a href="/tests/{{ t.id }}/dashboard" class="btn btn-outline btn-sm" target="_blank">Dashboard</a>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

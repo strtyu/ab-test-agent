@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title_suffix %} — Results{% endblock %}
+
+{% block content %}
+<div class="card">
+  {% if action == "analyze" %}
+  <h1>Analysis Complete</h1>
+  {% elif action == "end_test" %}
+  <h1>Test Concluded</h1>
+  {% else %}
+  <h1>Run Details</h1>
+  {% endif %}
+
+  {% if error %}
+  <div class="alert alert-error">
+    <strong>Error:</strong> {{ error }}
+  </div>
+  <a href="/" class="btn btn-primary" style="margin-top:12px">← Back to Form</a>
+
+  {% elif result %}
+  {% set rec = result.overall_recommendation %}
+  {% set rec_colors = {"ship": "#28a745", "do_not_ship": "#dc3545", "inconclusive": "#856404"} %}
+  {% set rec_labels = {"ship": "✓ SHIP", "do_not_ship": "✗ DO NOT SHIP", "inconclusive": "? INCONCLUSIVE"} %}
+
+  <div style="background:{{ rec_colors.get(rec, '#888') }};color:white;border-radius:10px;padding:18px 24px;margin-bottom:24px;font-size:18px;font-weight:700">
+    {{ rec_labels.get(rec, rec.upper()) }}
+  </div>
+
+  {% if result.narrative_summary %}
+  <div style="font-size:14px;color:#444;margin-bottom:20px;line-height:1.6;background:#f8f9fb;padding:14px 18px;border-radius:8px;border-left:3px solid #4472C4">
+    {{ result.narrative_summary }}
+  </div>
+  {% endif %}
+
+  <div style="font-size:13px;color:#666;margin-bottom:20px">
+    Test: <strong>{{ result.config.test_name }}</strong> &nbsp;|&nbsp;
+    Release: {{ result.config.release_date.strftime('%Y-%m-%d %H:%M') }} UTC &nbsp;|&nbsp;
+    Run ID: <code>{{ result.run_id }}</code>
+  </div>
+
+  <div style="margin-bottom:12px;display:flex;gap:16px;font-size:13px">
+    <span>🔵 Control: <strong>{{ result.config.control.versions | join(", ") }}</strong></span>
+    <span>🟠 Test: <strong>{{ result.config.test.versions | join(", ") }}</strong></span>
+  </div>
+
+  <h2>Overall Metrics</h2>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
+    <thead>
+      <tr style="background:#0F1B35;color:white;text-align:center">
+        <th style="padding:9px 12px;text-align:left">Metric</th>
+        <th style="padding:9px 12px">Control</th>
+        <th style="padding:9px 12px">Test</th>
+        <th style="padding:9px 12px">Δ abs</th>
+        <th style="padding:9px 12px">Δ %</th>
+        <th style="padding:9px 12px">p-value</th>
+        <th style="padding:9px 12px">Significant?</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for mr in result.metric_results %}
+      {% if mr.p_value is not none %}
+      <tr style="border-top:1px solid #e8eef8;text-align:center">
+        <td style="padding:8px 12px;font-weight:600;text-align:left">{{ mr.label }}</td>
+        <td style="padding:8px 12px;color:#1664F5;font-weight:600">{{ mr.control_value | round(4) if mr.control_value is not none else "—" }}</td>
+        <td style="padding:8px 12px;color:#F77F00;font-weight:600">{{ mr.test_value | round(4) if mr.test_value is not none else "—" }}</td>
+        {% if mr.control_value is not none and mr.test_value is not none %}
+        {% set delta = mr.test_value - mr.control_value %}
+        {% set dpct = (delta / mr.control_value * 100) if mr.control_value != 0 else none %}
+        <td style="padding:8px 12px;color:{{ '#28a745' if delta > 0 else '#dc3545' if delta < 0 else '#888' }}">
+          {{ "%+.4f" % delta }}
+        </td>
+        <td style="padding:8px 12px;color:{{ '#28a745' if delta > 0 else '#dc3545' if delta < 0 else '#888' }}">
+          {{ ("%+.1f%%" % dpct) if dpct is not none else "—" }}
+        </td>
+        {% else %}
+        <td style="padding:8px 12px;color:#888">—</td>
+        <td style="padding:8px 12px;color:#888">—</td>
+        {% endif %}
+        <td style="padding:8px 12px">{{ "%.4f" % mr.p_value }}</td>
+        <td style="padding:8px 12px">
+          {% if mr.is_significant %}
+          <span style="color:#28a745;font-weight:700">✓ Yes</span>
+          {% else %}
+          <span style="color:#888">✗ No</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if result.artifact_paths.screenshot %}
+  <details style="margin-bottom:16px">
+    <summary style="cursor:pointer;font-size:14px;font-weight:600;color:#4472C4">View Summary PNG</summary>
+    <img src="/artifacts/{{ result.artifact_paths.screenshot | replace('artifacts/', '', 1) | replace('artifacts\\', '', 1) }}"
+         style="max-width:100%;margin-top:12px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.12)" />
+  </details>
+  {% endif %}
+
+  {% if result.config.slack_channel %}
+  <p style="font-size:13px;color:#555;margin-bottom:16px">
+    Results sent to <strong>{{ result.config.slack_channel }}</strong>.
+  </p>
+  {% endif %}
+
+  <div class="actions">
+    <a href="/" class="btn btn-primary">← New Analysis</a>
+    {% if result.artifact_paths.dashboard %}
+    <a href="/dashboard/{{ result.run_id }}" class="btn" style="background:#e0e6f0;color:#444">Open Interactive Dashboard</a>
+    {% endif %}
+  </div>
+
+  {% else %}
+  <div class="alert alert-error">No result available.</div>
+  <a href="/" class="btn btn-primary" style="margin-top:12px">← Back to Form</a>
+  {% endif %}
+</div>
+{% endblock %}
