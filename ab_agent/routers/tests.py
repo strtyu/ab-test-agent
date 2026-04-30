@@ -175,9 +175,14 @@ async def test_detail(request: Request, test_id: str):
 
 
 @router.post("/tests/{test_id}/refresh")
-async def manual_refresh(test_id: str):
-    from ab_agent.pipeline.refresh_pipeline import run_refresh
-    run_refresh(test_id)
+async def manual_refresh(request: Request, test_id: str):
+    from ab_agent.pipeline.refresh_pipeline import _do_refresh
+    from fastapi.responses import JSONResponse
+    import traceback
+    try:
+        _do_refresh(test_id)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e), "traceback": traceback.format_exc()})
     return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
 
 
