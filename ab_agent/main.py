@@ -14,15 +14,6 @@ from ab_agent.routers import tests
 app = FastAPI(title="A/B Test Agent", version="0.1.0")
 
 
-import traceback as _traceback
-from fastapi import Request as _Request
-from fastapi.responses import JSONResponse as _JSONResponse
-
-@app.exception_handler(Exception)
-async def generic_exception_handler(request: _Request, exc: Exception):
-    tb = _traceback.format_exc()
-    return _JSONResponse(status_code=500, content={"error": str(exc), "traceback": tb})
-
 # Static files for artifact images — only mount if directory exists (not on Vercel serverless)
 try:
     from fastapi.staticfiles import StaticFiles
@@ -33,54 +24,6 @@ except Exception:
     pass  # Skip static files on serverless (Vercel)
 
 app.include_router(tests.router)
-
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
-
-
-@app.get("/debug")
-async def debug():
-    import traceback
-    results = {}
-    tests_to_try = [
-        ("psycopg2", lambda: __import__("psycopg2")),
-        ("db_connect", lambda: __import__("ab_agent.db.database", fromlist=["get_connection"]).get_connection()),
-        ("jinja2_path", lambda: str(__import__("pathlib").Path(__file__).parent / "templates")),
-        ("test_repo_list", lambda: __import__("ab_agent.db.repository", fromlist=["TestRepo"]).TestRepo().list_all()),
-        ("templates_render", lambda: _test_template_render()),
-        ("index_render", lambda: _test_index_render()),
-    ]
-    for name, fn in tests_to_try:
-        try:
-            result = fn()
-            results[name] = str(result)[:200]
-        except Exception as e:
-            results[name] = f"ERROR: {traceback.format_exc()}"
-    return results
-
-
-def _test_template_render():
-    from pathlib import Path
-    from jinja2 import Environment, FileSystemLoader
-    tmpl_dir = str(Path(__file__).parent / "templates")
-    env = Environment(loader=FileSystemLoader(tmpl_dir))
-    t = env.get_template("index.html")
-    return "OK: templates loaded"
-
-
-def _test_index_render():
-    from pathlib import Path
-    from jinja2 import Environment, FileSystemLoader
-    from ab_agent.db.repository import TestRepo, SnapshotRepo
-    import json
-    tmpl_dir = str(Path(__file__).parent / "templates")
-    env = Environment(loader=FileSystemLoader(tmpl_dir))
-    t = env.get_template("index.html")
-    tests = TestRepo().list_all()
-    result = t.render(request=None, tests=tests, previews={})
-    return f"OK: rendered {len(result)} chars"
 
 
 @app.on_event("startup")
