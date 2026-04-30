@@ -7,6 +7,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pathlib import Path
 from fastapi.templating import Jinja2Templates
 
 from ab_agent.agents.filter_agent import FilterAgent
@@ -14,7 +15,7 @@ from ab_agent.core.models import ABTestConfig, OrderConfig, QueryFilters, Versio
 from ab_agent.db.repository import AnalysisRepo, SnapshotRepo, TestRepo
 
 router = APIRouter()
-templates = Jinja2Templates(directory="ab_agent/templates")
+templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────

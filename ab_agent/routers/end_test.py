@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Form, Request
@@ -10,7 +11,7 @@ from ab_agent.pipeline.end_test_pipeline import EndTestPipeline
 from ab_agent.routers.analyze import _build_config
 
 router = APIRouter()
-templates = Jinja2Templates(directory="ab_agent/templates")
+templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 
 @router.post("/end-test", response_class=HTMLResponse)

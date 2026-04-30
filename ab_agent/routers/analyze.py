@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -12,7 +13,7 @@ from ab_agent.core.models import ABTestConfig, OrderConfig, QueryFilters, Versio
 from ab_agent.pipeline.analysis_pipeline import AnalysisPipeline
 
 router = APIRouter()
-templates = Jinja2Templates(directory="ab_agent/templates")
+templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 
 def _parse_orders(text: str) -> List[OrderConfig]:

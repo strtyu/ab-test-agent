@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -7,7 +8,7 @@ from fastapi.templating import Jinja2Templates
 from ab_agent.pipeline.metric_creation_pipeline import MetricCreationPipeline
 
 router = APIRouter()
-templates = Jinja2Templates(directory="ab_agent/templates")
+templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 
 @router.get("/add-metric", response_class=HTMLResponse)
