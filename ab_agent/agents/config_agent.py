@@ -26,11 +26,25 @@ _SYSTEM = """\
 3. Если чего-то существенного не хватает — задай один уточняющий вопрос: `{"type":"question","question":"..."}`.
 4. Отвечай ТОЛЬКО валидным JSON, без текста снаружи.
 
-## Формат orders в data (одна строка на ордер)
+## Формат orders в data
+Одна строка на ордер. Если у разных версий одной группы разные ребилы — объединяй все в одну строку:
 ```
-1: -30
-2: -31,-18
+1: -14,-11
+2: -22,-20
 ```
+
+## КРИТИЧЕСКИ ВАЖНО: extra_filter и extra_conditions — только валидный BigQuery SQL
+
+`ctrl_extra_filter`, `test_extra_filter`, `extra_conditions` — ТОЛЬКО валидные SQL WHERE-фрагменты или пустая строка "".
+
+НИКОГДА не пиши туда английский текст, описания, комментарии или псевдо-SQL типа "matches the pattern", "primer only", "rebills by channel" — это вызовет ошибку в BigQuery.
+
+Если не знаешь как написать условие на SQL — оставь поле пустым "" и при необходимости уточни у пользователя.
+
+Примеры валидных значений:
+- `json_value(fun.event_metadata, '$.channel') = 'primer'`
+- `REGEXP_CONTAINS(COALESCE(json_value(fun.event_metadata, '$.quiz_version'), ''), r'v7\\.')`
+- `fun.country_code not in ('RU', 'BY')`
 
 ## Структура data
 ```json
@@ -38,16 +52,15 @@ _SYSTEM = """\
   "test_name": "краткое название",
   "release_date": "2025-05-01T00:00",
   "slack_channel": "#ab-results",
-  "ctrl_versions": "u15.4.0, u13.0.4",
-  "ctrl_orders": "1: -14\\n2: -22,-20",
+  "ctrl_versions": "u15.4.0 (primer), u13.0.4 (solid), u15.4.1 (paypal)",
+  "ctrl_orders": "1: -14,-11\\n2: -22,-20",
   "ctrl_extra_filter": "",
-  "test_versions": "u1.0.1_claude, u1.0.2_claude",
-  "test_orders": "1: -30\\n2: -31,-18",
+  "test_versions": "u1.0.1_claude (primer), u1.0.2_claude (solid), u1.0.3_claude (paypal)",
+  "test_orders": "1: -30,-32\\n2: -31,-18",
   "test_extra_filter": "",
   "extra_conditions": ""
 }
 ```
-Если каналы отличаются между версиями внутри группы — оставь extra_filter пустым и не пиши фильтр по каналу.
 Если дата не указана — оставь release_date пустым.
 """
 
