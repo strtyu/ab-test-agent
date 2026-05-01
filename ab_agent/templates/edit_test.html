@@ -61,7 +61,8 @@
     <div style="display:flex;gap:.5rem;align-items:flex-end">
       <textarea name="description" rows="2"
         placeholder="Describe what to change, e.g.: add order 2 rebill -31 to test group, or change release date to May 5"
-        style="flex:1;margin:0;font-size:.88rem;resize:vertical"></textarea>
+        style="flex:1;margin:0;font-size:.88rem;resize:vertical"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();this.form.submit();}"></textarea>
       <button type="submit" class="btn btn-primary" style="height:fit-content;white-space:nowrap">Update ↵</button>
     </div>
   </form>
