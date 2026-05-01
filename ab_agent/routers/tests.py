@@ -777,7 +777,7 @@ async def test_dashboard(test_id: str):
 async def api_test_chat(test_id: str, request: Request):
     test = TestRepo().get(test_id)
     if not test:
-        return JSONResponse({"reply": "Test not found", "action": None})
+        return JSONResponse({"reply": "Test not found", "actions": []})
     try:
         body = await request.json()
         from ab_agent.agents.dashboard_chat import DashboardChatAgent
@@ -787,10 +787,27 @@ async def api_test_chat(test_id: str, request: Request):
             test_config=config,
             metrics_summary=body.get("metrics_summary", {}),
             history=body.get("history", []),
+            current_sql=config.custom_sql or "",
         )
         return JSONResponse(result)
     except Exception as e:
-        return JSONResponse({"reply": f"Error: {e}", "action": None})
+        return JSONResponse({"reply": f"Error: {e}", "actions": []})
+
+
+@router.post("/api/tests/{test_id}/update-sql")
+async def api_update_sql(test_id: str, request: Request):
+    try:
+        body = await request.json()
+        sql = body.get("sql", "").strip()
+        test = TestRepo().get(test_id)
+        if not test:
+            return JSONResponse({"ok": False, "error": "Test not found"})
+        config = ABTestConfig.model_validate_json(test["config_json"])
+        config = config.model_copy(update={"custom_sql": sql})
+        TestRepo().update_config(test_id, config.model_dump_json())
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
 
 
 @router.post("/api/tests/{test_id}/add-metric")

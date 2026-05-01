@@ -13,9 +13,18 @@ from ab_agent.visualization.chart_library import _shorten, calc_delta, fmt_value
 
 # ── Row builder ──────────────────────────────────────────────────────────────
 
+_KNOWN_COLS = {
+    "user_id", "timestamp", "split", "geo", "channel", "payment_method",
+    "subscription", "utm_source", "upsell_order", "ups_view", "ups_ttp",
+    "ups_purched", "purch_amount", "purch_count", "unsub12h", "ticket_count",
+    "diff_ms", "version", "upsell_group",
+}
+
+
 def build_rows_for_dashboard(ctrl_df: pd.DataFrame, test_df: pd.DataFrame) -> List[Dict]:
     rows = []
     for grp, df in [("ctrl", ctrl_df), ("test", test_df)]:
+        extra_cols = [c for c in df.columns if c not in _KNOWN_COLS]
         for _, r in df.iterrows():
             date_val = ""
             ts = r.get("timestamp")
@@ -38,7 +47,7 @@ def build_rows_for_dashboard(ctrl_df: pd.DataFrame, test_df: pd.DataFrame) -> Li
                 except (TypeError, ValueError):
                     return default
 
-            rows.append({
+            row = {
                 "uid":   sv("user_id"),
                 "grp":   grp,
                 "split": sv("split"),
@@ -57,7 +66,10 @@ def build_rows_for_dashboard(ctrl_df: pd.DataFrame, test_df: pd.DataFrame) -> Li
                 "unsub": int(nv("unsub12h")),
                 "tick":  int(nv("ticket_count") != 0),
                 "diff":  nv("diff_ms", None) if pd.notna(r.get("diff_ms", None)) else None,
-            })
+            }
+            if extra_cols:
+                row["extra"] = {c: nv(c) for c in extra_cols}
+            rows.append(row)
     return rows
 
 
@@ -434,12 +446,13 @@ function calcM(rows){
   const u={};
   rows.forEach(r=>{
     if(!r.uid)return;
-    if(!u[r.uid])u[r.uid]={v:0,t:0,p:0,s:0,tk:0,a:0,n:0,ds:[]};
+    if(!u[r.uid])u[r.uid]={v:0,t:0,p:0,s:0,tk:0,a:0,n:0,ds:[],ex:{}};
     const x=u[r.uid];
     x.v=Math.max(x.v,r.view||0);x.t=Math.max(x.t,r.ttp||0);
     x.p=Math.max(x.p,r.purch||0);x.s=Math.max(x.s,r.unsub||0);
     x.tk=Math.max(x.tk,r.tick||0);x.a+=r.amt||0;x.n+=r.cnt||0;
     if(r.diff!=null)x.ds.push(r.diff);
+    if(r.extra)Object.entries(r.extra).forEach(([k,v])=>{x.ex[k]=(x.ex[k]||0)+v;});
   });
   const us=Object.values(u);
   const vU=us.filter(x=>x.v).length, tU=us.filter(x=>x.t).length,
@@ -449,11 +462,17 @@ function calcM(rows){
   const diffs=us.flatMap(x=>x.ds);
   const med=diffs.length?median(diffs)/1000:null;
   const d=(a,b)=>b>0?a/b:null;
-  return{view_u:vU,ttp_u:tU,purch_u:pU,revenue:rev,purch_n:cnt,
+  const base={view_u:vU,ttp_u:tU,purch_u:pU,revenue:rev,purch_n:cnt,
          unsub_u:sU,tick_u:tkU,med_ttp:med,
          ttp_r:d(tU,vU),close_r:d(pU,tU),cvr:d(pU,vU),
          ppv:d(cnt,vU),unsub_r:d(sU,pU),tick_r:d(tkU,pU)};
-  CUSTOM_M_DEFS.forEach(cm=>{try{const m=base;base[cm.k]=Function('m','return ('+cm.expr+')')(m);}catch(e){base[cm.k]=null;}});
+  // aggregate extra columns from custom SQL
+  const extraKeys=new Set(us.flatMap(x=>Object.keys(x.ex)));
+  extraKeys.forEach(k=>{
+    base[k+'_u']=us.filter(x=>(x.ex[k]||0)>0).length;
+    base[k+'_sum']=us.reduce((s,x)=>s+(x.ex[k]||0),0);
+  });
+  CUSTOM_M_DEFS.forEach(cm=>{try{base[cm.k]=Function('m','return ('+cm.expr+')')(base);}catch(e){base[cm.k]=null;}});
   return base;
 }
 
@@ -579,7 +598,7 @@ function render(){
 render();
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
-let chatOpen=false, chatHistory=[], pendingMetric=null;
+let chatOpen=false, chatHistory=[], pendingMetric=null, pendingSql=null, pendingMetricAfterSql=null;
 function toggleChat(){
   chatOpen=!chatOpen;
   const p=document.getElementById('chat-panel');
@@ -643,9 +662,16 @@ async function sendChat(){
     removeThinking();
     appendMsg('ai',data.reply);
     chatHistory.push({role:'assistant',content:data.reply});
-    if(data.action&&data.action.type==='add_metric'){
-      pendingMetric=data.action.metric_def;
-      openMetricModal(data.action.metric_def);
+    const actions=data.actions||(data.action?[data.action]:[]);
+    const sqlAct=actions.find(a=>a.type==='update_sql');
+    const metricAct=actions.find(a=>a.type==='add_metric');
+    if(sqlAct){
+      pendingSql=sqlAct.sql;
+      pendingMetricAfterSql=metricAct?metricAct.metric_def:null;
+      openSqlModal(sqlAct.sql);
+    }else if(metricAct){
+      pendingMetric=metricAct.metric_def;
+      openMetricModal(metricAct.metric_def);
     }
   }catch(e){removeThinking();appendMsg('ai','Error: '+e.message);}
   finally{btn.disabled=false;}
@@ -680,6 +706,33 @@ document.getElementById('mm-cancel').onclick=()=>{
   document.getElementById('mm-overlay').classList.remove('open');
   pendingMetric=null;
 };
+// ── Update SQL modal ──────────────────────────────────────────────────────────
+function openSqlModal(sql){
+  document.getElementById('sql-preview').textContent=sql;
+  document.getElementById('sql-overlay').classList.add('open');
+}
+document.getElementById('sql-ok').onclick=async()=>{
+  if(!pendingSql)return;
+  const sql=pendingSql;
+  const afterMetric=pendingMetricAfterSql;
+  pendingSql=null;pendingMetricAfterSql=null;
+  document.getElementById('sql-overlay').classList.remove('open');
+  try{
+    const r=await fetch('/api/tests/'+TEST_ID+'/update-sql',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sql:sql})
+    });
+    const d=await r.json();
+    if(d.ok){
+      appendMsg('ai','✅ SQL updated. Click **Refresh** on the test page to reload data with the new query.');
+      if(afterMetric){pendingMetric=afterMetric;openMetricModal(afterMetric);}
+    }else{appendMsg('ai','Failed to save SQL: '+(d.error||'unknown'));}
+  }catch(e){appendMsg('ai','Error: '+e.message);}
+};
+document.getElementById('sql-cancel').onclick=()=>{
+  document.getElementById('sql-overlay').classList.remove('open');
+  pendingSql=null;pendingMetricAfterSql=null;
+};
 </script>
 
 <button class="chat-fab" id="chat-fab" onclick="toggleChat()">&#128172; Ask AI</button>
@@ -707,6 +760,17 @@ document.getElementById('mm-cancel').onclick=()=>{
     <div class="mm-btns">
       <button class="mm-ok" id="mm-ok">Add metric</button>
       <button class="mm-cancel" id="mm-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+<div class="mm-overlay" id="sql-overlay">
+  <div class="mm-box" style="max-width:680px">
+    <h3>Update SQL Query</h3>
+    <p style="font-size:12px;color:#64748B;margin-bottom:8px">The AI wants to replace the SQL query to add new data columns. After saving, click <strong>Refresh</strong> on the test page to reload data.</p>
+    <div class="mm-row mm-code" id="sql-preview" style="max-height:320px;overflow-y:auto;font-size:11px;white-space:pre-wrap;word-break:break-all"></div>
+    <div class="mm-btns">
+      <button class="mm-ok" id="sql-ok">Apply SQL</button>
+      <button class="mm-cancel" id="sql-cancel">Cancel</button>
     </div>
   </div>
 </div>
