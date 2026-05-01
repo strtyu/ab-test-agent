@@ -8,12 +8,64 @@
   <h1 style="margin:0">Edit Test</h1>
 </div>
 
-<div class="card">
-  {% if error %}
-  <div class="alert alert-error">{{ error }}</div>
+{# ── AI Chat Section ────────────────────────────────────────────────── #}
+<div class="card" style="padding-bottom:.8rem">
+  <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.8rem">
+    <span style="font-size:1.1rem">✨</span>
+    <h2 style="margin:0;font-size:1rem">Update with AI</h2>
+    <small style="color:#888;margin-left:.3rem">Describe what to change — AI updates the config</small>
+    {% if chat_history %}<a href="/tests/{{ test.id }}/edit" style="margin-left:auto;font-size:.78rem;color:#888;text-decoration:none">✕ Reset</a>{% endif %}
+  </div>
+
+  {% if chat_history %}
+  <div style="background:#f9f9fb;border-radius:8px;padding:.6rem .8rem;margin-bottom:.8rem;max-height:320px;overflow-y:auto">
+    {% for msg in chat_history %}
+    {% if msg.role == "user" %}
+    <div style="display:flex;justify-content:flex-end;margin:.35rem 0">
+      <div style="background:#4472C4;color:#fff;padding:.45rem .75rem;border-radius:14px 14px 2px 14px;max-width:82%;font-size:.85rem;white-space:pre-wrap;word-break:break-word">{{ msg.text }}</div>
+    </div>
+    {% else %}
+    <div style="display:flex;justify-content:flex-start;margin:.35rem 0">
+      <div style="background:#e8ecf8;color:#2d3436;padding:.45rem .75rem;border-radius:14px 14px 14px 2px;max-width:82%;font-size:.85rem">{{ msg.text }}</div>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
   {% endif %}
 
-  <form method="post" action="/tests/{{ test.id }}/edit">
+  {% if question %}
+  <form method="post" action="/tests/{{ test.id }}/edit/generate">
+    <input type="hidden" name="description" value="{{ description | e }}" />
+    <input type="hidden" name="history_json" value="{{ history_json | e }}" />
+    <div style="display:flex;gap:.5rem;align-items:flex-end">
+      <textarea name="answer" rows="2" placeholder="Your answer..."
+        style="flex:1;margin:0;font-size:.88rem;resize:none" required></textarea>
+      <button type="submit" class="btn btn-primary" style="height:fit-content;white-space:nowrap">Send ↵</button>
+    </div>
+  </form>
+  {% elif not ai_generated %}
+  <form method="post" action="/tests/{{ test.id }}/edit/generate">
+    <input type="hidden" name="history_json" value="[]" />
+    <div style="display:flex;gap:.5rem;align-items:flex-end">
+      <textarea name="description" rows="2"
+        placeholder="Describe what to change, e.g.: add order 2 rebill -31 to test group, or change release date to May 5"
+        style="flex:1;margin:0;font-size:.88rem;resize:vertical"></textarea>
+      <button type="submit" class="btn btn-primary" style="height:fit-content;white-space:nowrap">Update ↵</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+
+{# ── Main Form ───────────────────────────────────────────────────────── #}
+<form method="post" action="/tests/{{ test.id }}/edit">
+
+  <div class="card">
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+    {% if ai_generated %}
+    <div class="alert alert-success" style="margin-bottom:1rem">✅ Config updated — review and save.</div>
+    {% endif %}
 
     <div class="form-row">
       <div class="form-group">
@@ -71,32 +123,39 @@
       <label>Extra WHERE Conditions <small>one SQL condition per line</small></label>
       <textarea name="extra_conditions">{{ vals.extra_conditions | e }}</textarea>
     </div>
+  </div>
 
-    <div class="section-label">Custom SQL <small style="font-weight:400">optional — overrides auto-generated query</small></div>
+  {# Generate SQL button #}
+  <div style="display:flex;justify-content:flex-end;margin:-1rem 0 .5rem">
+    <button type="submit" formaction="/tests/{{ test.id }}/edit/generate-sql"
+      style="background:none;border:1.5px solid #4472C4;color:#4472C4;border-radius:6px;padding:.4rem 1rem;font-size:.82rem;font-weight:600;cursor:pointer">
+      ✨ Generate SQL with AI
+    </button>
+  </div>
 
-    <div class="form-group">
-      <textarea name="custom_sql" id="sql_editor" rows="28"
-        style="font-family:monospace;font-size:.78rem;background:#1e1e2e;color:#cdd6f4;border:none;border-radius:6px;padding:1rem;width:100%;resize:vertical"
-        placeholder="Leave empty to use auto-generated SQL from config above">{{ vals.custom_sql | e }}</textarea>
-      <script>
-        (function(){
-          var ta = document.getElementById('sql_editor');
-          if(!ta) return;
-          function resize(){ ta.style.height='auto'; ta.style.height=(ta.scrollHeight+4)+'px'; }
-          ta.addEventListener('input', resize);
-          resize();
-        })();
-      </script>
-      <p style="font-size:.75rem;color:#aaa;margin-top:.4rem">
-        Clear completely to revert to auto-generated SQL.
-      </p>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem">
+      <h2 style="margin:0">SQL Query</h2>
+      <span style="font-size:.75rem;color:#888">Clear to revert to auto-generated</span>
     </div>
+    <textarea name="custom_sql" id="sql_editor" rows="28"
+      style="font-family:monospace;font-size:.78rem;background:#1e1e2e;color:#cdd6f4;border:none;border-radius:6px;padding:1rem;width:100%;resize:vertical"
+      placeholder="Leave empty to auto-generate from config above">{{ vals.custom_sql | e }}</textarea>
+    <script>
+      (function(){
+        var ta = document.getElementById('sql_editor');
+        if(!ta) return;
+        function resize(){ ta.style.height='auto'; ta.style.height=(ta.scrollHeight+4)+'px'; }
+        ta.addEventListener('input', resize);
+        resize();
+      })();
+    </script>
+  </div>
 
-    <div class="actions" style="margin-bottom:1rem">
-      <button type="submit" class="btn btn-primary">Save &amp; Refresh</button>
-      <a href="/tests/{{ test.id }}" class="btn btn-outline">Cancel</a>
-    </div>
-  </form>
-</div>
+  <div class="actions" style="margin-bottom:2rem">
+    <button type="submit" class="btn btn-primary" style="font-size:1rem;padding:.7rem 2rem">💾 Save &amp; Refresh</button>
+    <a href="/tests/{{ test.id }}" class="btn btn-outline">Cancel</a>
+  </div>
+</form>
 </div>
 {% endblock %}

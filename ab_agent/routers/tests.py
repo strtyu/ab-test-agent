@@ -373,12 +373,15 @@ async def test_detail(request: Request, test_id: str):
 @router.post("/tests/{test_id}/refresh")
 async def manual_refresh(request: Request, test_id: str):
     from ab_agent.pipeline.refresh_pipeline import _do_refresh
-    from fastapi.responses import JSONResponse
     import traceback
+    import logging
+    from urllib.parse import quote
+    logger = logging.getLogger(__name__)
     try:
         _do_refresh(test_id)
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e), "traceback": traceback.format_exc()})
+        logger.exception("Refresh failed for %s", test_id)
+        return RedirectResponse(url=f"/tests/{test_id}?error={quote(str(e))}", status_code=303)
     return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
 
 
@@ -459,6 +462,171 @@ async def analysis_detail(request: Request, test_id: str, analysis_id: str):
             "analysis": analysis,
             "results": results,
         },
+    )
+
+
+@router.post("/tests/{test_id}/edit/generate", response_class=HTMLResponse)
+async def edit_generate(
+    request: Request,
+    test_id: str,
+    description: str = Form(""),
+    history_json: str = Form("[]"),
+    answer: str = Form(""),
+    test_name: str = Form(""),
+    release_date: str = Form(""),
+    slack_channel: str = Form(""),
+    ctrl_versions: str = Form(""),
+    ctrl_orders: str = Form(""),
+    ctrl_extra_filter: str = Form(""),
+    test_versions: str = Form(""),
+    test_orders: str = Form(""),
+    test_extra_filter: str = Form(""),
+    extra_conditions: str = Form(""),
+    custom_sql: str = Form(""),
+):
+    from ab_agent.agents.config_agent import ConfigAgent
+
+    test = TestRepo().get(test_id)
+    if not test:
+        return RedirectResponse(url="/", status_code=303)
+
+    current_vals = {
+        "test_name": test_name, "release_date": release_date, "slack_channel": slack_channel,
+        "ctrl_versions": ctrl_versions, "ctrl_orders": ctrl_orders, "ctrl_extra_filter": ctrl_extra_filter,
+        "test_versions": test_versions, "test_orders": test_orders, "test_extra_filter": test_extra_filter,
+        "extra_conditions": extra_conditions, "custom_sql": custom_sql,
+    }
+    history = []
+    try:
+        history = json.loads(history_json)
+    except Exception:
+        pass
+
+    current_user_msg = answer.strip() if answer.strip() else description
+    if answer.strip() and history:
+        history.append({"role": "user", "content": answer.strip()})
+
+    agent = ConfigAgent()
+    try:
+        config_data, question = agent.generate(description, history=history if answer else history)
+    except Exception as e:
+        return templates.TemplateResponse(
+            request, "edit_test.html",
+            {"test": test, "vals": current_vals, "chat_history": [], "error": str(e)},
+        )
+
+    if question:
+        new_history = history + [
+            {"role": "user", "content": current_user_msg},
+            {"role": "assistant", "content": json.dumps({"type": "question", "question": question})},
+        ]
+        return templates.TemplateResponse(
+            request, "edit_test.html",
+            {
+                "test": test,
+                "vals": current_vals,
+                "chat_history": _build_chat_history(new_history),
+                "question": question,
+                "description": description,
+                "history_json": json.dumps(new_history),
+            },
+        )
+
+    sql_preview = ""
+    try:
+        from ab_agent.agents.sql_agent import SQLAgent
+        sql_preview = SQLAgent().generate(config_data)
+    except Exception:
+        try:
+            preview_config = _build_config(
+                test_name=config_data.get("test_name", ""),
+                release_date_str=config_data.get("release_date") or datetime.utcnow().strftime("%Y-%m-%dT%H:%M"),
+                slack_channel=config_data.get("slack_channel", ""),
+                ctrl_versions_str=config_data.get("ctrl_versions", ""),
+                ctrl_orders_str=config_data.get("ctrl_orders", ""),
+                ctrl_extra_filter=config_data.get("ctrl_extra_filter", ""),
+                test_versions_str=config_data.get("test_versions", ""),
+                test_orders_str=config_data.get("test_orders", ""),
+                test_extra_filter=config_data.get("test_extra_filter", ""),
+                extra_conditions_str=config_data.get("extra_conditions", ""),
+            )
+            sql_preview = build_query(preview_config)
+        except Exception as e2:
+            sql_preview = f"-- Could not generate SQL: {e2}"
+
+    final_history = history + [
+        {"role": "user", "content": current_user_msg},
+        {"role": "assistant", "content": json.dumps({"type": "config", "data": config_data})},
+    ]
+    vals = {
+        "test_name": config_data.get("test_name", ""),
+        "release_date": config_data.get("release_date", ""),
+        "slack_channel": config_data.get("slack_channel", ""),
+        "ctrl_versions": config_data.get("ctrl_versions", ""),
+        "ctrl_orders": config_data.get("ctrl_orders", ""),
+        "ctrl_extra_filter": config_data.get("ctrl_extra_filter", ""),
+        "test_versions": config_data.get("test_versions", ""),
+        "test_orders": config_data.get("test_orders", ""),
+        "test_extra_filter": config_data.get("test_extra_filter", ""),
+        "extra_conditions": config_data.get("extra_conditions", ""),
+        "custom_sql": sql_preview,
+    }
+    return templates.TemplateResponse(
+        request, "edit_test.html",
+        {"test": test, "vals": vals, "chat_history": _build_chat_history(final_history), "ai_generated": True},
+    )
+
+
+@router.post("/tests/{test_id}/edit/generate-sql", response_class=HTMLResponse)
+async def edit_generate_sql(
+    request: Request,
+    test_id: str,
+    test_name: str = Form(""),
+    release_date: str = Form(""),
+    slack_channel: str = Form(""),
+    ctrl_versions: str = Form(""),
+    ctrl_orders: str = Form(""),
+    ctrl_extra_filter: str = Form(""),
+    test_versions: str = Form(""),
+    test_orders: str = Form(""),
+    test_extra_filter: str = Form(""),
+    extra_conditions: str = Form(""),
+    custom_sql: str = Form(""),
+):
+    test = TestRepo().get(test_id)
+    if not test:
+        return RedirectResponse(url="/", status_code=303)
+    vals = {
+        "test_name": test_name, "release_date": release_date, "slack_channel": slack_channel,
+        "ctrl_versions": ctrl_versions, "ctrl_orders": ctrl_orders, "ctrl_extra_filter": ctrl_extra_filter,
+        "test_versions": test_versions, "test_orders": test_orders, "test_extra_filter": test_extra_filter,
+        "extra_conditions": extra_conditions, "custom_sql": "",
+    }
+    config_dict = {
+        "test_name": test_name, "release_date": release_date, "slack_channel": slack_channel,
+        "ctrl_versions": ctrl_versions, "ctrl_orders": ctrl_orders, "ctrl_extra_filter": ctrl_extra_filter,
+        "test_versions": test_versions, "test_orders": test_orders, "test_extra_filter": test_extra_filter,
+        "extra_conditions": extra_conditions,
+    }
+    sql = ""
+    error = None
+    try:
+        from ab_agent.agents.sql_agent import SQLAgent
+        sql = SQLAgent().generate(config_dict)
+    except Exception as e:
+        try:
+            cfg = _build_config(
+                test_name, release_date or datetime.utcnow().strftime("%Y-%m-%dT%H:%M"),
+                slack_channel, ctrl_versions, ctrl_orders, ctrl_extra_filter,
+                test_versions, test_orders, test_extra_filter, extra_conditions,
+            )
+            sql = build_query(cfg)
+        except Exception as e2:
+            error = f"Could not generate SQL: {e2}"
+    vals["custom_sql"] = sql
+    return templates.TemplateResponse(
+        request, "edit_test.html",
+        {"test": test, "vals": vals, "chat_history": [], "ai_generated": bool(sql), "error": error},
     )
 
 

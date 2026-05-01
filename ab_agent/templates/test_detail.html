@@ -17,6 +17,9 @@
 {% if error is defined and error %}
 <div class="alert alert-error">{{ error }}</div>
 {% endif %}
+{% if request.query_params.get('error') %}
+<div class="alert alert-error">{{ request.query_params.get('error') }}</div>
+{% endif %}
 
 <!-- Config summary -->
 <div class="card">
