@@ -6,14 +6,14 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from pathlib import Path
 from fastapi.templating import Jinja2Templates
 
 from ab_agent.agents.filter_agent import FilterAgent
 from ab_agent.bigquery.query_builder import build_query
 from ab_agent.core.models import ABTestConfig, OrderConfig, QueryFilters, VersionGroup
-from ab_agent.db.repository import AnalysisRepo, SnapshotRepo, TestRepo
+from ab_agent.db.repository import AnalysisRepo, CustomMetricRepo, SnapshotRepo, TestRepo
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
@@ -757,7 +757,12 @@ async def test_dashboard(test_id: str):
             if config:
                 ctrl_v = [_strip_channel(v) for v in config.control.versions]
                 test_v = [_strip_channel(v) for v in config.test.versions]
-                html = render_html_dashboard_string(rows, config, ctrl_v, test_v)
+                custom_metrics = CustomMetricRepo().list_all()
+                html = render_html_dashboard_string(
+                    rows, config, ctrl_v, test_v,
+                    test_id=test_id,
+                    custom_metrics=custom_metrics,
+                )
                 return HTMLResponse(content=html)
         except Exception:
             pass
@@ -766,3 +771,43 @@ async def test_dashboard(test_id: str):
     if stored:
         return HTMLResponse(content=stored)
     return HTMLResponse("<h2>No dashboard available yet. Try refreshing.</h2>", status_code=404)
+
+
+@router.post("/api/tests/{test_id}/chat")
+async def api_test_chat(test_id: str, request: Request):
+    test = TestRepo().get(test_id)
+    if not test:
+        return JSONResponse({"reply": "Test not found", "action": None})
+    try:
+        body = await request.json()
+        from ab_agent.agents.dashboard_chat import DashboardChatAgent
+        config = ABTestConfig.model_validate_json(test["config_json"])
+        result = DashboardChatAgent().chat(
+            message=body.get("message", ""),
+            test_config=config,
+            metrics_summary=body.get("metrics_summary", {}),
+            history=body.get("history", []),
+        )
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"reply": f"Error: {e}", "action": None})
+
+
+@router.post("/api/tests/{test_id}/add-metric")
+async def api_add_metric(test_id: str, request: Request):
+    try:
+        body = await request.json()
+        metric = body.get("metric", {})
+        as_default = bool(body.get("as_default", False))
+        CustomMetricRepo().save(
+            name=metric["name"],
+            display_name=metric["display"],
+            format=metric.get("format", "f4"),
+            higher_is_better=bool(metric.get("hi", True)),
+            metric_type=metric.get("type", "rel"),
+            js_expr=metric["expr"],
+            is_default=as_default,
+        )
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})

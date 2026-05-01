@@ -161,6 +161,54 @@ tbody tr:last-child td{border-bottom:none}
 .bg{background:#DCFCE7;color:#15803D;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600}
 .bb{background:#FEE2E2;color:#B91C1C;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600}
 .bn{background:#F1F5F9;color:#64748B;padding:2px 7px;border-radius:4px;font-size:11px}
+/* ── Chat ── */
+.chat-fab{position:fixed;bottom:24px;right:250px;background:#1664F5;color:#fff;
+  border:none;border-radius:24px;padding:9px 16px;font-size:12px;font-weight:600;
+  cursor:pointer;box-shadow:0 4px 12px rgba(22,100,245,.35);z-index:200;
+  display:flex;align-items:center;gap:6px;transition:background .12s}
+.chat-fab:hover{background:#1255D6}
+.chat-panel{position:fixed;bottom:70px;right:250px;width:380px;max-height:520px;
+  background:#fff;border-radius:12px;border:1px solid #E2E8F0;
+  box-shadow:0 8px 32px rgba(0,0,0,.14);display:none;flex-direction:column;z-index:199}
+.chat-panel.open{display:flex}
+.chat-phdr{padding:12px 16px;border-bottom:1px solid #F1F5F9;display:flex;
+  justify-content:space-between;align-items:center;font-weight:600;font-size:13px;color:#0F1B35}
+.chat-close{background:none;border:none;color:#94A3B8;font-size:16px;cursor:pointer;
+  padding:0 2px;line-height:1}
+.chat-close:hover{color:#1E293B}
+.chat-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;min-height:120px}
+.chat-msg{max-width:90%;padding:8px 11px;border-radius:10px;font-size:12px;line-height:1.5;word-break:break-word}
+.chat-msg.user{align-self:flex-end;background:#1664F5;color:#fff;border-radius:10px 10px 2px 10px}
+.chat-msg.ai{align-self:flex-start;background:#F1F5F9;color:#1E293B;border-radius:10px 10px 10px 2px}
+.chat-msg.thinking{align-self:flex-start;color:#94A3B8;font-size:11px;font-style:italic;background:none;padding:4px 0}
+.chat-irow{padding:10px;border-top:1px solid #F1F5F9;display:flex;gap:8px;align-items:flex-end}
+.chat-irow textarea{flex:1;border:1px solid #CBD5E1;border-radius:8px;padding:7px 10px;
+  font-size:12px;resize:none;outline:none;font-family:inherit;max-height:80px}
+.chat-irow textarea:focus{border-color:#1664F5}
+#chat-send{padding:8px 12px;background:#1664F5;color:#fff;border:none;border-radius:8px;
+  cursor:pointer;font-size:14px;flex-shrink:0;transition:background .12s}
+#chat-send:hover{background:#1255D6}
+#chat-send:disabled{background:#CBD5E1;cursor:default}
+/* ── Add metric modal ── */
+.mm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;
+  align-items:center;justify-content:center;z-index:300}
+.mm-overlay.open{display:flex}
+.mm-box{background:#fff;border-radius:12px;padding:24px;max-width:420px;width:90%;
+  box-shadow:0 8px 32px rgba(0,0,0,.18)}
+.mm-box h3{font-size:15px;font-weight:700;margin-bottom:12px;color:#0F1B35}
+.mm-row{margin-bottom:10px;font-size:13px;color:#334155}
+.mm-code{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:6px;padding:8px;
+  font-size:11px;color:#475569;word-break:break-all;font-family:monospace}
+.mm-cb{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:#334155;
+  user-select:none;margin-top:4px}
+.mm-cb input{accent-color:#1664F5;cursor:pointer}
+.mm-btns{display:flex;gap:8px;margin-top:16px}
+.mm-ok{flex:1;padding:9px;background:#1664F5;color:#fff;border:none;border-radius:8px;
+  font-size:13px;font-weight:600;cursor:pointer}
+.mm-ok:hover{background:#1255D6}
+.mm-cancel{flex:1;padding:9px;background:#F1F5F9;color:#64748B;border:1px solid #E2E8F0;
+  border-radius:8px;font-size:13px;cursor:pointer}
+.mm-cancel:hover{background:#E2E8F0}
 </style>
 </head>
 <body>
@@ -248,6 +296,7 @@ tbody tr:last-child td{border-bottom:none}
 <script>
 const ROWS=TMPL_ROWS, CTRL_V=TMPL_CTRL_VERSIONS, TEST_V=TMPL_TEST_VERSIONS;
 const CTRL_L="TMPL_CTRL", TEST_L="TMPL_TEST";
+const TEST_ID="TMPL_TEST_ID";
 
 const ABS_M=[
   {k:"view_u",  l:"Viewers",        f:"int",   hi:true},
@@ -267,6 +316,11 @@ const REL_M=[
   {k:"unsub_r", l:"Unsub rate",   f:"pct", hi:false},
   {k:"tick_r",  l:"Ticket rate",  f:"pct", hi:false},
 ];
+
+const CUSTOM_M_DEFS=TMPL_CUSTOM_METRICS;
+CUSTOM_M_DEFS.forEach(cm=>{
+  (cm.type==='abs'?ABS_M:REL_M).push({k:cm.k,l:cm.l,f:cm.f,hi:cm.hi});
+});
 
 // State
 let mode="group", dim="", dateMin=0, dateMax=0;
@@ -399,6 +453,8 @@ function calcM(rows){
          unsub_u:sU,tick_u:tkU,med_ttp:med,
          ttp_r:d(tU,vU),close_r:d(pU,tU),cvr:d(pU,vU),
          ppv:d(cnt,vU),unsub_r:d(sU,pU),tick_r:d(tkU,pU)};
+  CUSTOM_M_DEFS.forEach(cm=>{try{const m=base;base[cm.k]=Function('m','return ('+cm.expr+')')(m);}catch(e){base[cm.k]=null;}});
+  return base;
 }
 
 // ── Formatting ───────────────────────────────────────────────────────────────
@@ -521,7 +577,115 @@ function render(){
 }
 
 render();
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+let chatOpen=false, chatHistory=[], pendingMetric=null;
+function toggleChat(){
+  chatOpen=!chatOpen;
+  const p=document.getElementById('chat-panel');
+  p.classList.toggle('open',chatOpen);
+  document.getElementById('chat-fab').textContent=chatOpen?'✕ Close':'💬 Ask AI';
+}
+function appendMsg(role,text){
+  const d=document.createElement('div');
+  d.className='chat-msg '+role;d.textContent=text;
+  const c=document.getElementById('chat-msgs');
+  c.appendChild(d);c.scrollTop=c.scrollHeight;
+}
+function removeThinking(){
+  const t=document.querySelector('.chat-msg.thinking');if(t)t.remove();
+}
+async function sendChat(){
+  const inp=document.getElementById('chat-input');
+  const msg=inp.value.trim();if(!msg)return;
+  inp.value='';
+  appendMsg('user',msg);
+  chatHistory.push({role:'user',content:msg});
+  const btn=document.getElementById('chat-send');
+  btn.disabled=true;
+  const thk=document.createElement('div');
+  thk.className='chat-msg thinking';thk.textContent='Thinking\u2026';
+  document.getElementById('chat-msgs').appendChild(thk);
+  document.getElementById('chat-msgs').scrollTop=9999;
+  const vr=getRows();
+  const cM=calcM(vr.filter(r=>r.grp==='ctrl'));
+  const tM=calcM(vr.filter(r=>r.grp==='test'));
+  try{
+    const res=await fetch('/api/tests/'+TEST_ID+'/chat',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message:msg,history:chatHistory.slice(-20),metrics_summary:{ctrl:cM,test:tM}})
+    });
+    const data=await res.json();
+    removeThinking();
+    appendMsg('ai',data.reply);
+    chatHistory.push({role:'assistant',content:data.reply});
+    if(data.action&&data.action.type==='add_metric'){
+      pendingMetric=data.action.metric_def;
+      openMetricModal(data.action.metric_def);
+    }
+  }catch(e){removeThinking();appendMsg('ai','Error: '+e.message);}
+  finally{btn.disabled=false;}
+}
+document.getElementById('chat-input').addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}
+});
+// ── Add metric modal ──────────────────────────────────────────────────────────
+function openMetricModal(m){
+  document.getElementById('mm-name').textContent=m.display+' ('+m.name+')';
+  document.getElementById('mm-expr').textContent=m.expr;
+  document.getElementById('mm-overlay').classList.add('open');
+}
+document.getElementById('mm-ok').onclick=async()=>{
+  if(!pendingMetric)return;
+  const asDefault=document.getElementById('mm-default').checked;
+  document.getElementById('mm-overlay').classList.remove('open');
+  try{
+    const r=await fetch('/api/tests/'+TEST_ID+'/add-metric',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({metric:pendingMetric,as_default:asDefault})
+    });
+    const d=await r.json();
+    if(d.ok){
+      appendMsg('ai','\u2705 Metric "'+pendingMetric.display+'" added! Reloading\u2026');
+      setTimeout(()=>window.location.reload(),1500);
+    }else{appendMsg('ai','Failed: '+(d.error||'unknown'));}
+  }catch(e){appendMsg('ai','Error: '+e.message);}
+  pendingMetric=null;
+};
+document.getElementById('mm-cancel').onclick=()=>{
+  document.getElementById('mm-overlay').classList.remove('open');
+  pendingMetric=null;
+};
 </script>
+
+<button class="chat-fab" id="chat-fab" onclick="toggleChat()">&#128172; Ask AI</button>
+<div class="chat-panel" id="chat-panel">
+  <div class="chat-phdr">
+    <span>AI Analysis Assistant</span>
+    <button class="chat-close" onclick="toggleChat()">&#10005;</button>
+  </div>
+  <div class="chat-msgs" id="chat-msgs">
+    <div class="chat-msg ai">Hi! I can see the current test data. Ask me anything about the results, or say "add metric" to define a new custom metric.</div>
+  </div>
+  <div class="chat-irow">
+    <textarea id="chat-input" rows="2" placeholder="Ask about the results… (Enter to send)"></textarea>
+    <button id="chat-send" onclick="sendChat()">&#8594;</button>
+  </div>
+</div>
+<div class="mm-overlay" id="mm-overlay">
+  <div class="mm-box">
+    <h3>Add Custom Metric</h3>
+    <div class="mm-row"><strong id="mm-name"></strong></div>
+    <div class="mm-row mm-code" id="mm-expr"></div>
+    <label class="mm-cb mm-row">
+      <input type="checkbox" id="mm-default"> Add as default for all new tests
+    </label>
+    <div class="mm-btns">
+      <button class="mm-ok" id="mm-ok">Add metric</button>
+      <button class="mm-cancel" id="mm-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>"""
 
@@ -587,9 +751,25 @@ def render_html_dashboard_string(
     config: ABTestConfig,
     ctrl_versions_clean: List[str],
     test_versions_clean: List[str],
+    test_id: str = "",
+    custom_metrics: List[Dict] = None,
 ) -> str:
     ctrl_short = _shorten(", ".join(ctrl_versions_clean), 50)
     test_short = _shorten(", ".join(test_versions_clean), 50)
+
+    # Build custom metric JS objects: {k, l, f, hi, type, expr}
+    cm_js = []
+    for cm in (custom_metrics or []):
+        cm_js.append({
+            "k": cm.get("name", ""),
+            "l": cm.get("display_name", cm.get("name", "")),
+            "f": cm.get("format", "f4"),
+            "hi": bool(cm.get("higher_is_better", True)),
+            "type": cm.get("metric_type", "rel"),
+            "expr": cm.get("js_expr", "null"),
+        })
+
+    rows_json = json.dumps(rows, ensure_ascii=False).replace("</", "<\\/")
 
     return (
         _HTML
@@ -599,7 +779,9 @@ def render_html_dashboard_string(
         .replace("TMPL_TEST_VERSIONS", json.dumps(test_versions_clean, ensure_ascii=False))
         .replace("TMPL_CTRL",          ctrl_short)
         .replace("TMPL_TEST",          test_short)
-        .replace("TMPL_ROWS",          json.dumps(rows, ensure_ascii=False))
+        .replace("TMPL_ROWS",          rows_json)
+        .replace("TMPL_TEST_ID",       test_id)
+        .replace("TMPL_CUSTOM_METRICS", json.dumps(cm_js, ensure_ascii=False))
     )
 
 

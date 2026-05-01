@@ -136,3 +136,34 @@ class AnalysisRepo:
         return _fetch_all(get_connection(),
             "SELECT * FROM analyses WHERE test_id=%s ORDER BY created_at DESC", (test_id,),
         )
+
+
+class CustomMetricRepo:
+    def save(
+        self,
+        name: str,
+        display_name: str,
+        format: str,
+        higher_is_better: bool,
+        metric_type: str,
+        js_expr: str,
+        is_default: bool = False,
+    ) -> None:
+        conn = get_connection()
+        _execute(conn,
+            """INSERT INTO custom_metrics
+               (name, display_name, format, higher_is_better, metric_type, js_expr, is_default, created_at)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+               ON CONFLICT (name) DO UPDATE SET
+                 display_name=EXCLUDED.display_name,
+                 format=EXCLUDED.format,
+                 higher_is_better=EXCLUDED.higher_is_better,
+                 metric_type=EXCLUDED.metric_type,
+                 js_expr=EXCLUDED.js_expr,
+                 is_default=EXCLUDED.is_default""",
+            (name, display_name, format, higher_is_better, metric_type, js_expr,
+             is_default, datetime.utcnow().isoformat()),
+        )
+
+    def list_all(self) -> List[dict]:
+        return _fetch_all(get_connection(), "SELECT * FROM custom_metrics ORDER BY created_at")

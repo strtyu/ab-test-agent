@@ -36,6 +36,17 @@ CREATE TABLE IF NOT EXISTS snapshots (
 
 ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS rows_json TEXT;
 
+CREATE TABLE IF NOT EXISTS custom_metrics (
+    name TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    format TEXT NOT NULL DEFAULT 'f4',
+    higher_is_better BOOLEAN NOT NULL DEFAULT true,
+    metric_type TEXT NOT NULL DEFAULT 'rel',
+    js_expr TEXT NOT NULL,
+    is_default BOOLEAN NOT NULL DEFAULT false,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS analyses (
     id TEXT PRIMARY KEY,
     test_id TEXT NOT NULL REFERENCES tests(id),
