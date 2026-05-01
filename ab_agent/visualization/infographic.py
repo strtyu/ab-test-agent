@@ -757,16 +757,13 @@ async function sendChat(){
   }catch(e){removeThinking();appendMsg('ai','Error: '+e.message);}
   finally{btn.disabled=false;}
 }
-document.getElementById('chat-input').addEventListener('keydown',e=>{
-  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}
-});
 // ── Add metric modal ──────────────────────────────────────────────────────────
 function openMetricModal(m){
   document.getElementById('mm-name').textContent=m.display+' ('+m.name+')';
   document.getElementById('mm-expr').textContent=m.expr;
   document.getElementById('mm-overlay').classList.add('open');
 }
-document.getElementById('mm-ok').onclick=async()=>{
+async function confirmAddMetric(){
   if(!pendingMetric)return;
   const asDefault=document.getElementById('mm-default').checked;
   document.getElementById('mm-overlay').classList.remove('open');
@@ -782,17 +779,17 @@ document.getElementById('mm-ok').onclick=async()=>{
     }else{appendMsg('ai','Failed: '+(d.error||'unknown'));}
   }catch(e){appendMsg('ai','Error: '+e.message);}
   pendingMetric=null;
-};
-document.getElementById('mm-cancel').onclick=()=>{
+}
+function cancelAddMetric(){
   document.getElementById('mm-overlay').classList.remove('open');
   pendingMetric=null;
-};
+}
 // ── Update SQL modal ──────────────────────────────────────────────────────────
 function openSqlModal(sql){
   document.getElementById('sql-preview').textContent=sql;
   document.getElementById('sql-overlay').classList.add('open');
 }
-document.getElementById('sql-ok').onclick=async()=>{
+async function confirmUpdateSql(){
   if(!pendingSql)return;
   const sql=pendingSql,afterMetric=pendingMetricAfterSql;
   pendingSql=null;pendingMetricAfterSql=null;
@@ -808,11 +805,11 @@ document.getElementById('sql-ok').onclick=async()=>{
       if(afterMetric){pendingMetric=afterMetric;openMetricModal(afterMetric);}
     }else{appendMsg('ai','Failed to save SQL: '+(d.error||'unknown'));}
   }catch(e){appendMsg('ai','Error: '+e.message);}
-};
-document.getElementById('sql-cancel').onclick=()=>{
+}
+function cancelUpdateSql(){
   document.getElementById('sql-overlay').classList.remove('open');
   pendingSql=null;pendingMetricAfterSql=null;
-};
+}
 // ── Remove metric ─────────────────────────────────────────────────────────────
 async function handleRemoveMetric(name,display){
   if(!confirm('Remove metric "'+display+'" from all dashboards?'))return;
@@ -843,7 +840,8 @@ async function handleRemoveMetric(name,display){
     <div class="chat-msg ai">Hi! I can see the current test data. Ask me anything about the results.</div>
   </div>
   <div class="chat-irow">
-    <textarea id="chat-input" rows="2" placeholder="Ask about the results&#8230; (Enter to send)"></textarea>
+    <textarea id="chat-input" rows="2" placeholder="Ask about the results&#8230; (Enter to send)"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
     <button id="chat-send" onclick="sendChat()">&#8594;</button>
   </div>
 </div>
@@ -856,8 +854,8 @@ async function handleRemoveMetric(name,display){
       <input type="checkbox" id="mm-default"> Add as default for all new tests
     </label>
     <div class="mm-btns">
-      <button class="mm-ok" id="mm-ok">Add metric</button>
-      <button class="mm-cancel" id="mm-cancel">Cancel</button>
+      <button class="mm-ok" onclick="confirmAddMetric()">Add metric</button>
+      <button class="mm-cancel" onclick="cancelAddMetric()">Cancel</button>
     </div>
   </div>
 </div>
@@ -867,8 +865,8 @@ async function handleRemoveMetric(name,display){
     <p style="font-size:12px;color:#64748B;margin-bottom:8px">The AI wants to replace the SQL query to add new data columns. After saving, click <strong>Refresh</strong> on the test page to reload data.</p>
     <div class="mm-row mm-code" id="sql-preview" style="max-height:320px;overflow-y:auto;font-size:11px;white-space:pre-wrap;word-break:break-all"></div>
     <div class="mm-btns">
-      <button class="mm-ok" id="sql-ok">Apply SQL</button>
-      <button class="mm-cancel" id="sql-cancel">Cancel</button>
+      <button class="mm-ok" onclick="confirmUpdateSql()">Apply SQL</button>
+      <button class="mm-cancel" onclick="cancelUpdateSql()">Cancel</button>
     </div>
   </div>
 </div>
