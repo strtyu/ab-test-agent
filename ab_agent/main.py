@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import os
+import traceback
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
 
 load_dotenv()
 
@@ -26,13 +28,22 @@ except Exception:
 app.include_router(tests.router)
 
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    tb = traceback.format_exc()
+    return HTMLResponse(
+        f"<pre style='font-family:monospace;padding:2rem;color:#c0392b'>"
+        f"<b>Error on {request.method} {request.url.path}</b>\n\n{tb}</pre>",
+        status_code=500,
+    )
+
+
 @app.on_event("startup")
 async def startup():
     try:
         get_connection()
     except Exception as e:
         print(f"DB connection warning at startup: {e}")
-    # Scheduler doesn't run on Vercel serverless
     if not os.environ.get("VERCEL"):
         try:
             from ab_agent.core.scheduler import start, restore_running_tests
