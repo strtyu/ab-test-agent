@@ -8,39 +8,51 @@
   <h1 style="margin:0">Create A/B Test</h1>
 </div>
 
-{# ── AI Section ─────────────────────────────────────────────────────── #}
-<div class="card">
+{# ── AI Chat Section ────────────────────────────────────────────────── #}
+<div class="card" style="padding-bottom:.8rem">
   <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.8rem">
     <span style="font-size:1.1rem">✨</span>
     <h2 style="margin:0;font-size:1rem">Generate with AI</h2>
     <small style="color:#888;margin-left:.3rem">Describe your test — AI fills config and SQL</small>
+    {% if chat_history %}<a href="/tests/new" style="margin-left:auto;font-size:.78rem;color:#888;text-decoration:none">✕ Start over</a>{% endif %}
   </div>
 
-  {% if question %}
-  <div style="background:#fff3cd;border-left:4px solid #ffc107;padding:.8rem 1rem;border-radius:6px;margin-bottom:1rem">
-    <strong>🤔 AI asks:</strong> {{ question }}
+  {# Chat messages #}
+  {% if chat_history %}
+  <div style="background:#f9f9fb;border-radius:8px;padding:.6rem .8rem;margin-bottom:.8rem;max-height:320px;overflow-y:auto">
+    {% for msg in chat_history %}
+    {% if msg.role == "user" %}
+    <div style="display:flex;justify-content:flex-end;margin:.35rem 0">
+      <div style="background:#4472C4;color:#fff;padding:.45rem .75rem;border-radius:14px 14px 2px 14px;max-width:82%;font-size:.85rem;white-space:pre-wrap;word-break:break-word">{{ msg.text }}</div>
+    </div>
+    {% else %}
+    <div style="display:flex;justify-content:flex-start;margin:.35rem 0">
+      <div style="background:#e8ecf8;color:#2d3436;padding:.45rem .75rem;border-radius:14px 14px 14px 2px;max-width:82%;font-size:.85rem">{{ msg.text }}</div>
+    </div>
+    {% endif %}
+    {% endfor %}
   </div>
+  {% endif %}
+
+  {# Input form #}
+  {% if question %}
   <form method="post" action="/tests/new/generate">
     <input type="hidden" name="description" value="{{ description | e }}" />
     <input type="hidden" name="history_json" value="{{ history_json | e }}" />
-    <div class="form-group" style="margin-bottom:.6rem">
-      <textarea name="answer" rows="2" placeholder="Answer the question above..." required></textarea>
-    </div>
-    <div class="actions" style="margin-top:0">
-      <button type="submit" class="btn btn-primary">🤖 Continue</button>
-      <a href="/tests/new" class="btn btn-outline">Start over</a>
+    <div style="display:flex;gap:.5rem;align-items:flex-end">
+      <textarea name="answer" rows="2" placeholder="Your answer..."
+        style="flex:1;margin:0;font-size:.88rem;resize:none" required></textarea>
+      <button type="submit" class="btn btn-primary" style="height:fit-content;white-space:nowrap">Send ↵</button>
     </div>
   </form>
-  {% else %}
+  {% elif not ai_generated %}
   <form method="post" action="/tests/new/generate">
     <input type="hidden" name="history_json" value="[]" />
-    <div class="form-group" style="margin-bottom:.6rem">
+    <div style="display:flex;gap:.5rem;align-items:flex-end">
       <textarea name="description" rows="3"
-        placeholder="E.g.: testing u15.5.1 vs u15.4.0, order 1, rebills -1 -2 -3. Release May 1 2025. Solidgate only."
-        style="font-size:.88rem">{{ description or '' }}</textarea>
-    </div>
-    <div class="actions" style="margin-top:0">
-      <button type="submit" class="btn btn-primary" style="font-size:.85rem">🤖 Generate</button>
+        placeholder="Describe your test: versions, orders, channels, date. E.g.: u1.0.1_claude vs u15.4.0, primer channel, order 1 rebill -30, order 2 rebills -31 -18. Release May 1 2025."
+        style="flex:1;margin:0;font-size:.88rem;resize:vertical">{{ description or '' }}</textarea>
+      <button type="submit" class="btn btn-primary" style="height:fit-content;white-space:nowrap">Generate ↵</button>
     </div>
   </form>
   {% endif %}

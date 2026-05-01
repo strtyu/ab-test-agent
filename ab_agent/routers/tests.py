@@ -87,6 +87,27 @@ def _empty_vals() -> dict:
     ]}
 
 
+def _build_chat_history(history: list) -> list:
+    chat = []
+    for msg in history:
+        if msg["role"] == "user":
+            chat.append({"role": "user", "text": msg["content"]})
+        elif msg["role"] == "assistant":
+            try:
+                parsed = json.loads(msg["content"])
+                if parsed.get("type") == "question":
+                    text = parsed.get("question", "")
+                elif parsed.get("type") == "config":
+                    text = "✅ Config generated!"
+                else:
+                    text = msg["content"]
+            except Exception:
+                text = msg["content"]
+            if text:
+                chat.append({"role": "assistant", "text": text})
+    return chat
+
+
 # ── Wizard ─────────────────────────────────────────────────────────────────
 
 @router.get("/tests/wizard", response_class=HTMLResponse)
@@ -114,6 +135,7 @@ async def new_test_generate(
     except Exception:
         pass
 
+    current_user_msg = answer.strip() if answer.strip() else description
     if answer.strip() and history:
         history.append({"role": "user", "content": answer.strip()})
 
@@ -123,18 +145,20 @@ async def new_test_generate(
     except Exception as e:
         return templates.TemplateResponse(
             request, "create_test.html",
-            {"vals": _empty_vals(), "error": str(e)},
+            {"vals": _empty_vals(), "chat_history": [], "error": str(e)},
         )
 
     if question:
         new_history = history + [
-            {"role": "user", "content": description if not answer else answer},
+            {"role": "user", "content": current_user_msg},
             {"role": "assistant", "content": json.dumps({"type": "question", "question": question})},
         ]
+        chat_history = _build_chat_history(new_history)
         return templates.TemplateResponse(
             request, "create_test.html",
             {
                 "vals": _empty_vals(),
+                "chat_history": chat_history,
                 "question": question,
                 "description": description,
                 "history_json": json.dumps(new_history),
@@ -159,6 +183,10 @@ async def new_test_generate(
     except Exception as e:
         sql_preview = f"-- Could not generate SQL: {e}"
 
+    final_history = history + [
+        {"role": "user", "content": current_user_msg},
+        {"role": "assistant", "content": json.dumps({"type": "config", "data": config_data})},
+    ]
     vals = {
         "test_name": config_data.get("test_name", ""),
         "release_date": config_data.get("release_date", ""),
@@ -174,7 +202,7 @@ async def new_test_generate(
     }
     return templates.TemplateResponse(
         request, "create_test.html",
-        {"vals": vals, "ai_generated": True},
+        {"vals": vals, "chat_history": _build_chat_history(final_history), "ai_generated": True},
     )
 
 
