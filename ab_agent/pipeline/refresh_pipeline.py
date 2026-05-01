@@ -66,6 +66,7 @@ def _do_refresh(test_id: str) -> None:
         slices=slices,
         screenshot_path=str(png_path),
         dashboard_html=dashboard_html,
+        rows_json=json.dumps(rows, ensure_ascii=False),
     )
 
     if config.slack_channel:

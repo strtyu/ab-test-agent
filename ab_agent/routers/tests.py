@@ -741,7 +741,28 @@ async def delete_test(test_id: str):
 
 @router.get("/tests/{test_id}/dashboard")
 async def test_dashboard(test_id: str):
+    test = TestRepo().get(test_id)
     snap = SnapshotRepo().latest(test_id)
-    if not snap or not snap.get("dashboard_html"):
+    if not snap:
         return HTMLResponse("<h2>No dashboard available yet. Try refreshing.</h2>", status_code=404)
-    return HTMLResponse(content=snap["dashboard_html"])
+
+    rows_json = snap.get("rows_json") or ""
+    if rows_json:
+        try:
+            import json as _json
+            from ab_agent.bigquery.query_builder import _strip_channel
+            from ab_agent.visualization.infographic import render_html_dashboard_string
+            rows = _json.loads(rows_json)
+            config = ABTestConfig.model_validate_json(test["config_json"]) if test else None
+            if config:
+                ctrl_v = [_strip_channel(v) for v in config.control.versions]
+                test_v = [_strip_channel(v) for v in config.test.versions]
+                html = render_html_dashboard_string(rows, config, ctrl_v, test_v)
+                return HTMLResponse(content=html)
+        except Exception:
+            pass
+
+    stored = snap.get("dashboard_html") or ""
+    if stored:
+        return HTMLResponse(content=stored)
+    return HTMLResponse("<h2>No dashboard available yet. Try refreshing.</h2>", status_code=404)

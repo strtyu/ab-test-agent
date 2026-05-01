@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
     dashboard_html TEXT
 );
 
+ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS rows_json TEXT;
+
 CREATE TABLE IF NOT EXISTS analyses (
     id TEXT PRIMARY KEY,
     test_id TEXT NOT NULL REFERENCES tests(id),

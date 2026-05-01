@@ -75,6 +75,7 @@ class SnapshotRepo:
         screenshot_path: str = "",
         dashboard_path: str = "",
         dashboard_html: str = "",
+        rows_json: str = "",
     ) -> None:
         slices_serialized = json.dumps(
             slices if isinstance(slices, dict) and all(
@@ -88,12 +89,12 @@ class SnapshotRepo:
         _execute(conn,
             """INSERT INTO snapshots
                (id, test_id, created_at, ctrl_metrics_json, test_metrics_json, slices_json,
-                screenshot_path, dashboard_path, dashboard_html)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                screenshot_path, dashboard_path, dashboard_html, rows_json)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (
                 snapshot_id, test_id, datetime.utcnow().isoformat(),
                 json.dumps(ctrl_metrics), json.dumps(test_metrics), slices_serialized,
-                screenshot_path, dashboard_path, dashboard_html,
+                screenshot_path, dashboard_path, dashboard_html, rows_json,
             ),
         )
 
