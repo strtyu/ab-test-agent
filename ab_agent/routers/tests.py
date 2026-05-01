@@ -78,17 +78,29 @@ def _build_config(
     )
 
 
+def _empty_vals() -> dict:
+    return {k: "" for k in [
+        "test_name", "release_date", "slack_channel",
+        "ctrl_versions", "ctrl_orders", "ctrl_extra_filter",
+        "test_versions", "test_orders", "test_extra_filter",
+        "extra_conditions", "custom_sql",
+    ]}
+
+
 # ── Wizard ─────────────────────────────────────────────────────────────────
 
 @router.get("/tests/wizard", response_class=HTMLResponse)
-async def wizard_form(request: Request):
-    return templates.TemplateResponse(
-        request, "wizard.html", {"step": "describe"},
-    )
+async def wizard_redirect(request: Request):
+    return RedirectResponse(url="/tests/new", status_code=302)
 
 
 @router.post("/tests/wizard/preview", response_class=HTMLResponse)
-async def wizard_preview(
+async def wizard_preview_redirect(request: Request):
+    return RedirectResponse(url="/tests/new", status_code=302)
+
+
+@router.post("/tests/new/generate", response_class=HTMLResponse)
+async def new_test_generate(
     request: Request,
     description: str = Form(""),
     history_json: str = Form("[]"),
@@ -102,9 +114,7 @@ async def wizard_preview(
     except Exception:
         pass
 
-    # If answering a clarifying question, append Q&A to history
     if answer.strip() and history:
-        # last assistant message was the question
         history.append({"role": "user", "content": answer.strip()})
 
     agent = ConfigAgent()
@@ -112,26 +122,25 @@ async def wizard_preview(
         config_data, question = agent.generate(description, history=history if answer else history)
     except Exception as e:
         return templates.TemplateResponse(
-            request, "wizard.html", {"step": "describe", "error": str(e)},
+            request, "create_test.html",
+            {"vals": _empty_vals(), "error": str(e)},
         )
 
     if question:
-        # Append current exchange to history for next round
         new_history = history + [
             {"role": "user", "content": description if not answer else answer},
             {"role": "assistant", "content": json.dumps({"type": "question", "question": question})},
         ]
         return templates.TemplateResponse(
-            request, "wizard.html",
+            request, "create_test.html",
             {
-                "step": "question",
+                "vals": _empty_vals(),
                 "question": question,
                 "description": description,
                 "history_json": json.dumps(new_history),
             },
         )
 
-    # Build a preview config to generate SQL
     sql_preview = ""
     try:
         preview_config = _build_config(
@@ -148,15 +157,24 @@ async def wizard_preview(
         )
         sql_preview = build_query(preview_config)
     except Exception as e:
-        sql_preview = f"-- Could not generate SQL preview: {e}"
+        sql_preview = f"-- Could not generate SQL: {e}"
 
+    vals = {
+        "test_name": config_data.get("test_name", ""),
+        "release_date": config_data.get("release_date", ""),
+        "slack_channel": config_data.get("slack_channel", ""),
+        "ctrl_versions": config_data.get("ctrl_versions", ""),
+        "ctrl_orders": config_data.get("ctrl_orders", ""),
+        "ctrl_extra_filter": config_data.get("ctrl_extra_filter", ""),
+        "test_versions": config_data.get("test_versions", ""),
+        "test_orders": config_data.get("test_orders", ""),
+        "test_extra_filter": config_data.get("test_extra_filter", ""),
+        "extra_conditions": config_data.get("extra_conditions", ""),
+        "custom_sql": sql_preview,
+    }
     return templates.TemplateResponse(
-        request, "wizard.html",
-        {
-            "step": "preview",
-            "config": config_data,
-            "sql_preview": sql_preview,
-        },
+        request, "create_test.html",
+        {"vals": vals, "ai_generated": True},
     )
 
 
@@ -186,7 +204,7 @@ async def index(request: Request):
 
 @router.get("/tests/new", response_class=HTMLResponse)
 async def new_test_form(request: Request):
-    return templates.TemplateResponse(request, "create_test.html", {"error": None})
+    return templates.TemplateResponse(request, "create_test.html", {"vals": _empty_vals(), "error": None})
 
 
 @router.post("/tests/create", response_class=HTMLResponse)
@@ -219,8 +237,14 @@ async def create_test(
         _do_initial_refresh(test_id)
         return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
     except Exception as e:
+        vals = {
+            "test_name": test_name, "release_date": release_date, "slack_channel": slack_channel,
+            "ctrl_versions": ctrl_versions, "ctrl_orders": ctrl_orders, "ctrl_extra_filter": ctrl_extra_filter,
+            "test_versions": test_versions, "test_orders": test_orders, "test_extra_filter": test_extra_filter,
+            "extra_conditions": extra_conditions, "custom_sql": custom_sql,
+        }
         return templates.TemplateResponse(
-            request, "create_test.html", {"error": str(e)}
+            request, "create_test.html", {"vals": vals, "error": str(e)}
         )
 
 
