@@ -781,13 +781,20 @@ async def api_test_chat(test_id: str, request: Request):
     try:
         body = await request.json()
         from ab_agent.agents.dashboard_chat import DashboardChatAgent
+        from ab_agent.bigquery.query_builder import build_query
         config = ABTestConfig.model_validate_json(test["config_json"])
+        sql = config.custom_sql or ""
+        if not sql:
+            try:
+                sql = build_query(config)
+            except Exception:
+                sql = ""
         result = DashboardChatAgent().chat(
             message=body.get("message", ""),
             test_config=config,
             metrics_summary=body.get("metrics_summary", {}),
             history=body.get("history", []),
-            current_sql=config.custom_sql or "",
+            current_sql=sql,
             mode=body.get("mode", "analysis"),
             custom_metrics=body.get("custom_metrics", []),
         )
