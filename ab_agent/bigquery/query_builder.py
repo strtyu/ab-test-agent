@@ -57,6 +57,8 @@ def _extra_where(config: ABTestConfig) -> str:
 
 
 def build_query(config: ABTestConfig, end_date=None) -> str:
+    if config.custom_sql:
+        return config.custom_sql
     ts = _fmt_ts(config.release_date)
     ts_end = _fmt_ts(end_date) if end_date else _fmt_ts(config.end_date) if config.end_date else None
     all_rebills = _int_csv(config.all_rebill_counts())

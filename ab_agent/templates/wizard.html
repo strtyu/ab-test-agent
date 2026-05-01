@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}AI Test Wizard{% endblock %}
+
+{% block content %}
+<div style="max-width:820px;margin:0 auto">
+<div style="display:flex;align-items:center;gap:.8rem;margin-bottom:1.2rem">
+  <a href="/" style="color:#888;font-size:.82rem;text-decoration:none">← All Tests</a>
+  <h1 style="margin:0">✨ AI Test Wizard</h1>
+</div>
+
+{% if error is defined and error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+{# ── Step 1: Describe ──────────────────────────────────────────────── #}
+{% if step == "describe" %}
+<div class="card">
+  <h2>Опиши тест</h2>
+  <p style="color:#636e72;font-size:.88rem;margin-bottom:1rem">
+    Напиши что хочешь протестировать — версии, ордера, фильтры. AI сгенерирует конфиг и SQL-запрос,
+    которые ты сможешь посмотреть и отредактировать перед запуском.
+  </p>
+  <form method="post" action="/tests/wizard/preview">
+    <input type="hidden" name="history_json" value="[]" />
+    <div class="form-group">
+      <label>Описание теста</label>
+      <textarea name="description" rows="5"
+        placeholder="Например: тестирую версию u15.5.1 против u15.4.0 для первого ордера, все ребилы (-1, -2, -3). Дата релиза 1 мая 2025. Только канал solidgate."
+        style="font-size:.9rem" required></textarea>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">🤖 Сгенерировать конфиг</button>
+      <a href="/tests/new" class="btn btn-outline">Создать вручную</a>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+{# ── Step 1.5: AI asks a question ─────────────────────────────────── #}
+{% if step == "question" %}
+<div class="card">
+  <h2>AI уточняет</h2>
+  <div style="background:#fff3cd;border-left:4px solid #ffc107;padding:1rem;border-radius:6px;margin-bottom:1.2rem">
+    <strong>🤔 Вопрос:</strong> {{ question }}
+  </div>
+  <form method="post" action="/tests/wizard/preview">
+    <input type="hidden" name="description" value="{{ description | e }}" />
+    <input type="hidden" name="history_json" value="{{ history_json | e }}" />
+    <div class="form-group">
+      <label>Твой ответ</label>
+      <textarea name="answer" rows="3" placeholder="Ответь на вопрос выше..." required></textarea>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">Продолжить</button>
+      <a href="/tests/wizard" class="btn btn-outline">Начать заново</a>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+{# ── Step 2: Preview & Edit ────────────────────────────────────────── #}
+{% if step == "preview" %}
+<form method="post" action="/tests/create">
+  <input type="hidden" name="ai_filter" value="0" />
+
+  <div class="card">
+    <h2>Сгенерированный конфиг — проверь и отредактируй</h2>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Название теста</label>
+        <input type="text" name="test_name" value="{{ config.get('test_name','') | e }}" required />
+      </div>
+      <div class="form-group">
+        <label>Дата релиза (UTC)</label>
+        <input type="datetime-local" name="release_date" value="{{ config.get('release_date','') | e }}" required />
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Slack Channel</label>
+      <input type="text" name="slack_channel" value="{{ config.get('slack_channel','#ab-results') | e }}" />
+    </div>
+
+    <div class="section-label">Control Group</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Versions <small>через запятую</small></label>
+        <input type="text" name="ctrl_versions" value="{{ config.get('ctrl_versions','') | e }}" required />
+      </div>
+      <div class="form-group">
+        <label>Orders <small>ORDER: REBILL1,REBILL2</small></label>
+        <textarea name="ctrl_orders" required>{{ config.get('ctrl_orders','') | e }}</textarea>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Extra SQL Filter (ctrl)</label>
+      <input type="text" name="ctrl_extra_filter" value="{{ config.get('ctrl_extra_filter','') | e }}" />
+    </div>
+
+    <div class="section-label">Test Group</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Versions <small>через запятую</small></label>
+        <input type="text" name="test_versions" value="{{ config.get('test_versions','') | e }}" required />
+      </div>
+      <div class="form-group">
+        <label>Orders</label>
+        <textarea name="test_orders" required>{{ config.get('test_orders','') | e }}</textarea>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Extra SQL Filter (test)</label>
+      <input type="text" name="test_extra_filter" value="{{ config.get('test_extra_filter','') | e }}" />
+    </div>
+
+    <div class="section-label">Фильтры</div>
+    <div class="form-group">
+      <label>Extra WHERE Conditions</label>
+      <textarea name="extra_conditions">{{ config.get('extra_conditions','') | e }}</textarea>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem">
+      <h2 style="margin:0">SQL-запрос</h2>
+      <span style="font-size:.78rem;color:#888">Можно редактировать — если изменишь, будет использован твой вариант</span>
+    </div>
+    <textarea name="custom_sql" id="sql_editor" rows="22"
+      style="font-family:monospace;font-size:.78rem;background:#1e1e2e;color:#cdd6f4;border:none;border-radius:6px;padding:1rem;width:100%;resize:vertical"
+      placeholder="SQL будет здесь...">{{ sql_preview | e }}</textarea>
+    <p style="font-size:.75rem;color:#aaa;margin-top:.4rem">
+      Если оставить без изменений — используется сгенерированный запрос.
+      Очисти поле полностью — вернётся к автогенерации из конфига.
+    </p>
+  </div>
+
+  <div class="actions" style="margin-bottom:2rem">
+    <button type="submit" class="btn btn-primary" style="font-size:1rem;padding:.7rem 2rem">
+      🚀 Создать тест и запустить
+    </button>
+    <a href="/tests/wizard" class="btn btn-outline">Начать заново</a>
+    <a href="/tests/new" class="btn btn-outline">Ручная форма</a>
+  </div>
+</form>
+{% endif %}
+
+</div>
+{% endblock %}

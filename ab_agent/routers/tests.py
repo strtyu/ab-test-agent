@@ -6,13 +6,15 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pathlib import Path
 from fastapi.templating import Jinja2Templates
 
 from ab_agent.agents.filter_agent import FilterAgent
+from ab_agent.bigquery.query_builder import build_query
 from ab_agent.core.models import ABTestConfig, OrderConfig, QueryFilters, VersionGroup
 from ab_agent.db.repository import AnalysisRepo, SnapshotRepo, TestRepo
+from ab_agent.core import scheduler as _sched
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
@@ -77,6 +79,92 @@ def _build_config(
     )
 
 
+# ── Wizard ─────────────────────────────────────────────────────────────────
+
+@router.get("/tests/wizard", response_class=HTMLResponse)
+async def wizard_form(request: Request):
+    return templates.TemplateResponse(
+        "wizard.html",
+        {"request": request, "step": "describe"},
+    )
+
+
+@router.post("/tests/wizard/preview", response_class=HTMLResponse)
+async def wizard_preview(
+    request: Request,
+    description: str = Form(""),
+    history_json: str = Form("[]"),
+    answer: str = Form(""),
+):
+    from ab_agent.agents.config_agent import ConfigAgent
+
+    history = []
+    try:
+        history = json.loads(history_json)
+    except Exception:
+        pass
+
+    # If answering a clarifying question, append Q&A to history
+    if answer.strip() and history:
+        # last assistant message was the question
+        history.append({"role": "user", "content": answer.strip()})
+
+    agent = ConfigAgent()
+    try:
+        config_data, question = agent.generate(description, history=history if answer else history)
+    except Exception as e:
+        return templates.TemplateResponse(
+            "wizard.html",
+            {"request": request, "step": "describe", "error": str(e)},
+        )
+
+    if question:
+        # Append current exchange to history for next round
+        new_history = history + [
+            {"role": "user", "content": description if not answer else answer},
+            {"role": "assistant", "content": json.dumps({"type": "question", "question": question})},
+        ]
+        return templates.TemplateResponse(
+            "wizard.html",
+            {
+                "request": request,
+                "step": "question",
+                "question": question,
+                "description": description,
+                "history_json": json.dumps(new_history),
+            },
+        )
+
+    # Build a preview config to generate SQL
+    sql_preview = ""
+    try:
+        preview_config = _build_config(
+            test_name=config_data.get("test_name", ""),
+            release_date_str=config_data.get("release_date") or datetime.utcnow().strftime("%Y-%m-%dT%H:%M"),
+            slack_channel=config_data.get("slack_channel", ""),
+            ctrl_versions_str=config_data.get("ctrl_versions", ""),
+            ctrl_orders_str=config_data.get("ctrl_orders", ""),
+            ctrl_extra_filter=config_data.get("ctrl_extra_filter", ""),
+            test_versions_str=config_data.get("test_versions", ""),
+            test_orders_str=config_data.get("test_orders", ""),
+            test_extra_filter=config_data.get("test_extra_filter", ""),
+            extra_conditions_str=config_data.get("extra_conditions", ""),
+        )
+        sql_preview = build_query(preview_config)
+    except Exception as e:
+        sql_preview = f"-- Could not generate SQL preview: {e}"
+
+    return templates.TemplateResponse(
+        "wizard.html",
+        {
+            "request": request,
+            "step": "preview",
+            "config": config_data,
+            "sql_preview": sql_preview,
+        },
+    )
+
+
 # ── Routes ─────────────────────────────────────────────────────────────────
 
 @router.get("/", response_class=HTMLResponse)
@@ -120,6 +208,7 @@ async def create_test(
     test_extra_filter: str = Form(""),
     extra_conditions: str = Form(""),
     ai_filter: Optional[str] = Form(None),
+    custom_sql: str = Form(""),
 ):
     try:
         config = _build_config(
@@ -128,6 +217,8 @@ async def create_test(
             test_versions, test_orders, test_extra_filter,
             extra_conditions, ai_filter_enabled=(ai_filter == "1"),
         )
+        if custom_sql.strip():
+            config = config.model_copy(update={"custom_sql": custom_sql.strip()})
         test_id = str(uuid.uuid4())
         TestRepo().create(test_id, config.test_name, config.model_dump_json())
         _do_initial_refresh(test_id)

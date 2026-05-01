@@ -79,6 +79,7 @@ class ABTestConfig(BaseModel):
     test: VersionGroup
     filters: QueryFilters = QueryFilters()
     slack_channel: str = ""
+    custom_sql: Optional[str] = None
 
     @model_validator(mode="after")
     def no_version_overlap(self) -> "ABTestConfig":
