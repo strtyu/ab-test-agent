@@ -83,8 +83,7 @@ def _build_config(
 @router.get("/tests/wizard", response_class=HTMLResponse)
 async def wizard_form(request: Request):
     return templates.TemplateResponse(
-        "wizard.html",
-        {"request": request, "step": "describe"},
+        request, "wizard.html", {"step": "describe"},
     )
 
 
@@ -113,8 +112,7 @@ async def wizard_preview(
         config_data, question = agent.generate(description, history=history if answer else history)
     except Exception as e:
         return templates.TemplateResponse(
-            "wizard.html",
-            {"request": request, "step": "describe", "error": str(e)},
+            request, "wizard.html", {"step": "describe", "error": str(e)},
         )
 
     if question:
@@ -124,9 +122,8 @@ async def wizard_preview(
             {"role": "assistant", "content": json.dumps({"type": "question", "question": question})},
         ]
         return templates.TemplateResponse(
-            "wizard.html",
+            request, "wizard.html",
             {
-                "request": request,
                 "step": "question",
                 "question": question,
                 "description": description,
@@ -154,9 +151,8 @@ async def wizard_preview(
         sql_preview = f"-- Could not generate SQL preview: {e}"
 
     return templates.TemplateResponse(
-        "wizard.html",
+        request, "wizard.html",
         {
-            "request": request,
             "step": "preview",
             "config": config_data,
             "sql_preview": sql_preview,
