@@ -593,13 +593,13 @@ def render_html_dashboard_string(
 
     return (
         _HTML
-        .replace("TMPL_TEST_NAME", config.test_name)
-        .replace("TMPL_RELEASE",   config.release_date.strftime("%Y-%m-%d %H:%M"))
-        .replace("TMPL_CTRL",      ctrl_short)
-        .replace("TMPL_TEST",      test_short)
-        .replace("TMPL_ROWS",      json.dumps(rows, ensure_ascii=False))
+        .replace("TMPL_TEST_NAME",     config.test_name)
+        .replace("TMPL_RELEASE",       config.release_date.strftime("%Y-%m-%d %H:%M"))
         .replace("TMPL_CTRL_VERSIONS", json.dumps(ctrl_versions_clean, ensure_ascii=False))
         .replace("TMPL_TEST_VERSIONS", json.dumps(test_versions_clean, ensure_ascii=False))
+        .replace("TMPL_CTRL",          ctrl_short)
+        .replace("TMPL_TEST",          test_short)
+        .replace("TMPL_ROWS",          json.dumps(rows, ensure_ascii=False))
     )
 
 
