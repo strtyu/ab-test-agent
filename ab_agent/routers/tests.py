@@ -835,6 +835,7 @@ async def api_remove_metric(test_id: str, request: Request):
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
 
+@router.post("/api/tests/{test_id}/update-sql")
 async def api_update_sql(test_id: str, request: Request):
     try:
         body = await request.json()
