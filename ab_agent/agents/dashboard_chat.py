@@ -71,6 +71,11 @@ _SYSTEM_METRICS = """\
 You are a metrics management assistant for an A/B test dashboard.
 Your job: help the user add new custom metrics or remove existing ones from the dashboard.
 
+CRITICAL RULE: The current SQL query is provided at the bottom of this context.
+Before asking the user ANY questions about data sources, table names, or SQL patterns — READ THE SQL FIRST.
+If the user asks for a metric that is similar to an existing one in the SQL (e.g. "unsub 24h" when SQL already has unsub12h logic),
+derive the new version by analogy. Do NOT ask what table to use or how to compute it — you already have the answer in the SQL.
+
 To ADD a metric, follow the same rules as in analysis mode:
 - Discuss what the metric measures and how to compute it
 - Use existing per-user values if possible (view_u, ttp_u, purch_u, revenue, purch_n,
@@ -230,7 +235,7 @@ class DashboardChatAgent:
             lines.append("\nNo custom metrics defined yet.")
 
         if current_sql:
-            sql_preview = current_sql[:3000] + ("\n-- [truncated]" if len(current_sql) > 3000 else "")
+            sql_preview = current_sql[:6000] + ("\n-- [truncated]" if len(current_sql) > 6000 else "")
             lines.append(f"\n--- Current SQL query ---\n{sql_preview}")
 
         return "\n".join(lines)
