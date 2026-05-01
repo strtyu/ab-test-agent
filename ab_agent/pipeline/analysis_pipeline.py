@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from ab_agent.bigquery.client import BQClient
-from ab_agent.bigquery.query_builder import build_query
+from ab_agent.bigquery.query_builder import build_query, _strip_channel
 from ab_agent.core.models import ABTestConfig, MetricResult
 from ab_agent.db.repository import AnalysisRepo
 from ab_agent.integrations.storage import ArtifactStore
@@ -45,8 +45,8 @@ def run_analysis(test_id: str, config: ABTestConfig) -> str:
     if df.empty:
         raise ValueError("No data returned from BigQuery")
 
-    ctrl_df = df[df["split"].isin(config.control.versions)].copy()
-    test_df = df[df["split"].isin(config.test.versions)].copy()
+    ctrl_df = df[df["split"].isin([_strip_channel(v) for v in config.control.versions])].copy()
+    test_df = df[df["split"].isin([_strip_channel(v) for v in config.test.versions])].copy()
 
     results = run_bootstrap_analysis(ctrl_df, test_df, config)
     recommendation = _determine_recommendation(results)

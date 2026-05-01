@@ -5,7 +5,7 @@ import logging
 import uuid
 
 from ab_agent.bigquery.client import BQClient
-from ab_agent.bigquery.query_builder import build_query
+from ab_agent.bigquery.query_builder import build_query, _strip_channel
 from ab_agent.core.models import ABTestConfig
 from ab_agent.db.repository import SnapshotRepo, TestRepo
 from ab_agent.integrations.storage import ArtifactStore
@@ -39,8 +39,10 @@ def _do_refresh(test_id: str) -> None:
         logger.warning("No data for test %s", test_id)
         return
 
-    ctrl_df = df[df["split"].isin(config.control.versions)].copy()
-    test_df = df[df["split"].isin(config.test.versions)].copy()
+    ctrl_versions_clean = [_strip_channel(v) for v in config.control.versions]
+    test_versions_clean = [_strip_channel(v) for v in config.test.versions]
+    ctrl_df = df[df["split"].isin(ctrl_versions_clean)].copy()
+    test_df = df[df["split"].isin(test_versions_clean)].copy()
 
     ctrl_m = calc_metrics(ctrl_df)
     test_m = calc_metrics(test_df)
