@@ -75,9 +75,18 @@
     <div class="section-label">Custom SQL <small style="font-weight:400">optional — overrides auto-generated query</small></div>
 
     <div class="form-group">
-      <textarea name="custom_sql" rows="14"
+      <textarea name="custom_sql" id="sql_editor" rows="28"
         style="font-family:monospace;font-size:.78rem;background:#1e1e2e;color:#cdd6f4;border:none;border-radius:6px;padding:1rem;width:100%;resize:vertical"
         placeholder="Leave empty to use auto-generated SQL from config above">{{ vals.custom_sql | e }}</textarea>
+      <script>
+        (function(){
+          var ta = document.getElementById('sql_editor');
+          if(!ta) return;
+          function resize(){ ta.style.height='auto'; ta.style.height=(ta.scrollHeight+4)+'px'; }
+          ta.addEventListener('input', resize);
+          resize();
+        })();
+      </script>
       <p style="font-size:.75rem;color:#aaa;margin-top:.4rem">
         Clear completely to revert to auto-generated SQL.
       </p>

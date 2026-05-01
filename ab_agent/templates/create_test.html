@@ -140,9 +140,18 @@
       <h2 style="margin:0">SQL Query</h2>
       <span style="font-size:.75rem;color:#888">Edit if needed — clear to auto-generate from config</span>
     </div>
-    <textarea name="custom_sql" rows="18"
+    <textarea name="custom_sql" id="sql_editor" rows="32"
       style="font-family:monospace;font-size:.78rem;background:#1e1e2e;color:#cdd6f4;border:none;border-radius:6px;padding:1rem;width:100%;resize:vertical"
       placeholder="Fill config above and click ✨ Generate SQL, or leave empty to auto-generate on create...">{{ vals.custom_sql | e }}</textarea>
+    <script>
+      (function(){
+        var ta = document.getElementById('sql_editor');
+        if(!ta) return;
+        function resize(){ ta.style.height='auto'; ta.style.height=(ta.scrollHeight+4)+'px'; }
+        ta.addEventListener('input', resize);
+        resize();
+      })();
+    </script>
   </div>
 
   <div class="actions" style="margin-bottom:2rem">
