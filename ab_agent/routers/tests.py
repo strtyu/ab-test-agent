@@ -167,21 +167,25 @@ async def new_test_generate(
 
     sql_preview = ""
     try:
-        preview_config = _build_config(
-            test_name=config_data.get("test_name", ""),
-            release_date_str=config_data.get("release_date") or datetime.utcnow().strftime("%Y-%m-%dT%H:%M"),
-            slack_channel=config_data.get("slack_channel", ""),
-            ctrl_versions_str=config_data.get("ctrl_versions", ""),
-            ctrl_orders_str=config_data.get("ctrl_orders", ""),
-            ctrl_extra_filter=config_data.get("ctrl_extra_filter", ""),
-            test_versions_str=config_data.get("test_versions", ""),
-            test_orders_str=config_data.get("test_orders", ""),
-            test_extra_filter=config_data.get("test_extra_filter", ""),
-            extra_conditions_str=config_data.get("extra_conditions", ""),
-        )
-        sql_preview = build_query(preview_config)
+        from ab_agent.agents.sql_agent import SQLAgent
+        sql_preview = SQLAgent().generate(config_data)
     except Exception as e:
-        sql_preview = f"-- Could not generate SQL: {e}"
+        try:
+            preview_config = _build_config(
+                test_name=config_data.get("test_name", ""),
+                release_date_str=config_data.get("release_date") or datetime.utcnow().strftime("%Y-%m-%dT%H:%M"),
+                slack_channel=config_data.get("slack_channel", ""),
+                ctrl_versions_str=config_data.get("ctrl_versions", ""),
+                ctrl_orders_str=config_data.get("ctrl_orders", ""),
+                ctrl_extra_filter=config_data.get("ctrl_extra_filter", ""),
+                test_versions_str=config_data.get("test_versions", ""),
+                test_orders_str=config_data.get("test_orders", ""),
+                test_extra_filter=config_data.get("test_extra_filter", ""),
+                extra_conditions_str=config_data.get("extra_conditions", ""),
+            )
+            sql_preview = build_query(preview_config)
+        except Exception as e2:
+            sql_preview = f"-- Could not generate SQL: {e2}"
 
     final_history = history + [
         {"role": "user", "content": current_user_msg},
@@ -203,6 +207,60 @@ async def new_test_generate(
     return templates.TemplateResponse(
         request, "create_test.html",
         {"vals": vals, "chat_history": _build_chat_history(final_history), "ai_generated": True},
+    )
+
+
+@router.post("/tests/new/generate-sql", response_class=HTMLResponse)
+async def generate_sql_from_form(
+    request: Request,
+    test_name: str = Form(""),
+    release_date: str = Form(""),
+    slack_channel: str = Form(""),
+    ctrl_versions: str = Form(""),
+    ctrl_orders: str = Form(""),
+    ctrl_extra_filter: str = Form(""),
+    test_versions: str = Form(""),
+    test_orders: str = Form(""),
+    test_extra_filter: str = Form(""),
+    extra_conditions: str = Form(""),
+):
+    vals = {
+        "test_name": test_name, "release_date": release_date, "slack_channel": slack_channel,
+        "ctrl_versions": ctrl_versions, "ctrl_orders": ctrl_orders, "ctrl_extra_filter": ctrl_extra_filter,
+        "test_versions": test_versions, "test_orders": test_orders, "test_extra_filter": test_extra_filter,
+        "extra_conditions": extra_conditions, "custom_sql": "",
+    }
+    config_dict = {
+        "test_name": test_name,
+        "release_date": release_date,
+        "slack_channel": slack_channel,
+        "ctrl_versions": ctrl_versions,
+        "ctrl_orders": ctrl_orders,
+        "ctrl_extra_filter": ctrl_extra_filter,
+        "test_versions": test_versions,
+        "test_orders": test_orders,
+        "test_extra_filter": test_extra_filter,
+        "extra_conditions": extra_conditions,
+    }
+    sql = ""
+    error = None
+    try:
+        from ab_agent.agents.sql_agent import SQLAgent
+        sql = SQLAgent().generate(config_dict)
+    except Exception as e:
+        try:
+            cfg = _build_config(
+                test_name, release_date or datetime.utcnow().strftime("%Y-%m-%dT%H:%M"),
+                slack_channel, ctrl_versions, ctrl_orders, ctrl_extra_filter,
+                test_versions, test_orders, test_extra_filter, extra_conditions,
+            )
+            sql = build_query(cfg)
+        except Exception as e2:
+            error = f"Could not generate SQL: {e2}"
+    vals["custom_sql"] = sql
+    return templates.TemplateResponse(
+        request, "create_test.html",
+        {"vals": vals, "chat_history": [], "ai_generated": bool(sql), "error": error},
     )
 
 

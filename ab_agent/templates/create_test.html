@@ -127,6 +127,14 @@
     </div>
   </div>
 
+  {# Generate SQL button — submits to generate-sql route, returns page with SQL filled #}
+  <div style="display:flex;justify-content:flex-end;margin:-1rem 0 .5rem">
+    <button type="submit" formaction="/tests/new/generate-sql"
+      style="background:none;border:1.5px solid #4472C4;color:#4472C4;border-radius:6px;padding:.4rem 1rem;font-size:.82rem;font-weight:600;cursor:pointer">
+      ✨ Generate SQL with AI
+    </button>
+  </div>
+
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem">
       <h2 style="margin:0">SQL Query</h2>
@@ -134,7 +142,7 @@
     </div>
     <textarea name="custom_sql" rows="18"
       style="font-family:monospace;font-size:.78rem;background:#1e1e2e;color:#cdd6f4;border:none;border-radius:6px;padding:1rem;width:100%;resize:vertical"
-      placeholder="SQL will appear here after AI generation, or leave empty for auto-generation...">{{ vals.custom_sql | e }}</textarea>
+      placeholder="Fill config above and click ✨ Generate SQL, or leave empty to auto-generate on create...">{{ vals.custom_sql | e }}</textarea>
   </div>
 
   <div class="actions" style="margin-bottom:2rem">
