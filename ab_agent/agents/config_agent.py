@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -12,6 +13,8 @@ from ab_agent.core.exceptions import AgentError
 
 _SYSTEM = """\
 Ты — помощник по настройке A/B тестов в системе апселл-тестирования. Пользователь описывает тест в свободной форме — твоя задача понять и заполнить конфиг.
+
+ВСЕГДА отвечай ТОЛЬКО валидным JSON — без текста до или после, без пояснений, без markdown.
 
 ## Контекст домена
 - Тест сравнивает версии апселл-офферов (splits). Формат: `u15.4.1`, `u1.0.1_claude`, и т.п.
@@ -24,22 +27,21 @@ _SYSTEM = """\
 1. Пойми из описания: какие версии тестовые, какие контрольные, какие ордера и ребилы у каждой группы, канал, дату релиза.
 2. Если всё понятно — верни JSON `{"type":"config","data":{...}}`.
 3. Если чего-то существенного не хватает — задай один уточняющий вопрос: `{"type":"question","question":"..."}`.
-4. Отвечай ТОЛЬКО валидным JSON, без текста снаружи.
 
 ## Дата релиза
-- Текущий год указан в начале системного сообщения. Используй его, если год в дате не указан.
-- Если дата указана с локальным временем и часовым поясом — конвертируй в UTC (например, UTC+5 → вычти 5 часов).
-- Если дата не указана вообще — оставь release_date пустым "".
+- Текущий год и дата указаны в начале системного сообщения. Используй их, если год в дате не указан.
+- Если дата с локальным временем и часовым поясом — конвертируй в UTC (UTC+5 → вычти 5 часов).
+- Если дата не указана — оставь release_date пустым "".
 
 ## Формат orders в data
 
-**Простой формат** (если у всех версий одной группы одинаковые ребилы):
+**Простой формат** — когда у всех версий одной группы ОДИНАКОВЫЕ ребилы:
 ```
-1: -14,-11
+1: -14
 2: -22,-20
 ```
 
-**Формат с версиями** (если разные версии/каналы имеют РАЗНЫЕ ребилы — обязателен):
+**Формат с версиями** — когда у разных версий/каналов РАЗНЫЕ ребилы (обязателен!):
 ```
 u15.4.0: 1: -14
 u15.4.0: 2: -22,-20
@@ -48,37 +50,88 @@ u13.0.4: 2: -20
 u15.4.1: 1: -14
 u15.4.1: 2: -22,-20
 ```
-ВАЖНО: если у primer и solid разные ребилы для одного ордера — используй формат с версиями, не сливай в одну строку.
 
-## КРИТИЧЕСКИ ВАЖНО: extra_filter и extra_conditions — только валидный BigQuery SQL
+## extra_filter и extra_conditions — только валидный BigQuery SQL или ""
 
-`ctrl_extra_filter`, `test_extra_filter`, `extra_conditions` — ТОЛЬКО валидные SQL WHERE-фрагменты или пустая строка "".
-
-НИКОГДА не пиши туда английский текст, описания, комментарии или псевдо-SQL типа "matches the pattern", "primer only", "rebills by channel" — это вызовет ошибку в BigQuery.
-
-Если не знаешь как написать условие на SQL — оставь поле пустым "" и при необходимости уточни у пользователя.
+НИКОГДА не пиши туда английский текст, описания, комментарии, псевдо-SQL.
 
 Примеры валидных значений:
-- `json_value(fun.event_metadata, '$.channel') = 'primer'`
 - `REGEXP_CONTAINS(COALESCE(json_value(fun.event_metadata, '$.quiz_version'), ''), r'v7\\.')`
+- `json_value(fun.event_metadata, '$.channel') = 'primer'`
 - `fun.country_code not in ('RU', 'BY')`
 
-## Структура data
+## Пример входных данных и ожидаемый JSON
+
+Входные данные:
+```
+24.04 19:05 по Астане (UTC+5)
+test
+u1.0.1_claude primer
+u1.0.2_claude solid
+u1.0.3_claude paypal
+filter: quiz_version matches v7.
+
+u1.0.1_claude primer
+-30
+-31,-18
+
+u1.0.2_claude solid
+-32
+-18
+
+u1.0.3_claude paypal
+-30
+-31,-18
+
+clean
+u15.4.0 primer
+u13.0.4 solid
+u15.4.1 paypal
+
+u15.4.0 primer
+-14
+-22,-20
+
+u13.0.4 solid
+-11
+-20
+
+u15.4.1 paypal
+-14
+-22,-20
+```
+
+Ожидаемый JSON:
 ```json
-{
-  "test_name": "краткое название",
-  "release_date": "YYYY-MM-DDTHH:MM",
-  "slack_channel": "#ab-results",
-  "ctrl_versions": "u15.4.0 (primer), u13.0.4 (solid), u15.4.1 (paypal)",
-  "ctrl_orders": "u15.4.0: 1: -14\\nu15.4.0: 2: -22,-20\\nu13.0.4: 1: -11\\nu13.0.4: 2: -20\\nu15.4.1: 1: -14\\nu15.4.1: 2: -22,-20",
-  "ctrl_extra_filter": "",
-  "test_versions": "u1.0.1_claude (primer), u1.0.2_claude (solid), u1.0.3_claude (paypal)",
-  "test_orders": "u1.0.1_claude: 1: -30\\nu1.0.1_claude: 2: -31,-18\\nu1.0.2_claude: 1: -32\\nu1.0.2_claude: 2: -18\\nu1.0.3_claude: 1: -30\\nu1.0.3_claude: 2: -31,-18",
-  "test_extra_filter": "",
-  "extra_conditions": ""
-}
+{"type":"config","data":{"test_name":"AI Toolkit vs Claude Templates","release_date":"2026-04-24T14:05","slack_channel":"","ctrl_versions":"u15.4.0 (primer), u13.0.4 (solid), u15.4.1 (paypal)","ctrl_orders":"u15.4.0: 1: -14\\nu15.4.0: 2: -22,-20\\nu13.0.4: 1: -11\\nu13.0.4: 2: -20\\nu15.4.1: 1: -14\\nu15.4.1: 2: -22,-20","ctrl_extra_filter":"","test_versions":"u1.0.1_claude (primer), u1.0.2_claude (solid), u1.0.3_claude (paypal)","test_orders":"u1.0.1_claude: 1: -30\\nu1.0.1_claude: 2: -31,-18\\nu1.0.2_claude: 1: -32\\nu1.0.2_claude: 2: -18\\nu1.0.3_claude: 1: -30\\nu1.0.3_claude: 2: -31,-18","test_extra_filter":"","extra_conditions":"REGEXP_CONTAINS(COALESCE(json_value(fun.event_metadata, '$.quiz_version'), ''), r'v7\\.')"}}
 ```
 """
+
+
+def _extract_json(raw: str) -> Optional[dict]:
+    raw = raw.strip()
+    # Strip markdown fences
+    if raw.startswith("```"):
+        parts = raw.split("```")
+        for i, part in enumerate(parts):
+            if i % 2 == 1:
+                if part.startswith("json"):
+                    part = part[4:]
+                raw = part.strip()
+                break
+    # Try direct parse
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    # Extract first JSON object from the string
+    match = re.search(r'\{.*\}', raw, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+    return None
 
 
 class ConfigAgent:
@@ -115,24 +168,17 @@ class ConfigAgent:
             resp = self._client.chat.completions.create(
                 model=self._model,
                 messages=messages,
-                max_tokens=1000,
+                max_tokens=1500,
                 temperature=0.1,
             )
         except Exception as e:
             raise AgentError(f"ConfigAgent LLM call failed: {e}") from e
 
         raw = (resp.choices[0].message.content or "").strip()
-        # Strip markdown code fences if present
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
+        parsed = _extract_json(raw)
 
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            return None, f"Не смог разобрать ответ AI. Попробуй описать точнее."
+        if parsed is None:
+            return None, "Не смог разобрать ответ AI. Попробуй описать точнее."
 
         if parsed.get("type") == "question":
             return None, parsed.get("question", "Уточни детали теста.")
