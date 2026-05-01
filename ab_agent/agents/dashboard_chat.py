@@ -181,11 +181,11 @@ class DashboardChatAgent:
 
         # Build orders summary for diagnostics mode
         ctrl_orders = "; ".join(
-            f"order {o.order_num}: rebills {o.rebill_days}"
+            f"order {o.order_number}: rebills {o.rebill_counts}"
             for o in config.control.orders
         ) if hasattr(config.control, "orders") and config.control.orders else ""
         test_orders = "; ".join(
-            f"order {o.order_num}: rebills {o.rebill_days}"
+            f"order {o.order_number}: rebills {o.rebill_counts}"
             for o in config.test.orders
         ) if hasattr(config.test, "orders") and config.test.orders else ""
 
