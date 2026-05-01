@@ -398,7 +398,12 @@ async def manual_refresh(request: Request, test_id: str):
         _do_refresh(test_id)
     except Exception as e:
         logger.exception("Refresh failed for %s", test_id)
-        return RedirectResponse(url=f"/tests/{test_id}?error={quote(str(e))}", status_code=303)
+        # Unwrap tenacity RetryError to show the actual cause
+        cause = getattr(e, "__cause__", None) or getattr(e, "last_attempt", None)
+        if cause is not None and hasattr(cause, "exception"):
+            cause = cause.exception()
+        err_msg = str(cause or e)
+        return RedirectResponse(url=f"/tests/{test_id}?error={quote(err_msg)}", status_code=303)
     return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
 
 
