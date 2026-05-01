@@ -60,7 +60,8 @@ class BQClient:
         if use_cache and cache_path.exists():
             return pd.read_parquet(cache_path)
         try:
-            df = self._client.query(sql).to_dataframe()
+            rows = self._client.query(sql).result()
+            df = pd.DataFrame([dict(row) for row in rows])
         except Exception as e:
             raise BQQueryError(f"BigQuery query failed: {e}") from e
         if use_cache:
