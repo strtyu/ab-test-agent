@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import List
+import re
+from typing import Dict, List, Optional, Set
 
 from ab_agent.core.models import ABTestConfig, VersionGroup
 
@@ -8,6 +9,19 @@ _UPSELL_VERSION_EXPR = """coalesce(
         json_value(ups_view.event_metadata, "$.upsell_version"),
         regexp_extract(ups_view.referrer, r'[?&]upsell_version=([^&]+)')
       )"""
+
+_CHANNEL_SQL = {
+    "primer": "json_value(fun.event_metadata, '$.channel') = 'primer'",
+    "solidgate": "json_value(fun.event_metadata, '$.channel') = 'solidgate'",
+    "paypal": "lower(json_value(fun.event_metadata, '$.payment_method')) like '%paypal-vault%'",
+}
+
+_CHANNEL_KEY = {
+    "primer": "primer",
+    "solid": "solidgate",
+    "solidgate": "solidgate",
+    "paypal": "paypal",
+}
 
 
 def _fmt_ts(dt) -> str:
@@ -22,15 +36,67 @@ def _str_csv(vals: List[str]) -> str:
     return ", ".join(f"'{v}'" for v in vals)
 
 
-def _build_cash_join_blocks(control: VersionGroup, test: VersionGroup) -> str:
+def _strip_channel(ver: str) -> str:
+    """Remove '(channel)' suffix: 'u15.4.0 (primer)' → 'u15.4.0'."""
+    return re.sub(r"\s*\([^)]+\)\s*$", "", ver).strip()
+
+
+def _extract_channel(ver: str) -> Optional[str]:
+    """Return normalized channel name from annotation, or None."""
+    m = re.search(r"\(([^)]+)\)\s*$", ver)
+    if m:
+        raw = m.group(1).strip().lower()
+        return _CHANNEL_KEY.get(raw, raw)
+    return None
+
+
+def _is_multichannel(versions: List[str]) -> bool:
+    return any(_extract_channel(v) for v in versions)
+
+
+def _parse_per_version_orders(text: str) -> Dict[str, Dict[int, List[int]]]:
+    """
+    Parse 'version: order: rebills' format.
+    Returns {clean_version: {order_num: [rebills]}}.
+    Lines in simple format ('1: -14') are ignored.
+    """
+    result: Dict[str, Dict[int, List[int]]] = {}
+    for line in (text or "").strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(":", 2)
+        if len(parts) < 3:
+            continue
+        first = parts[0].strip()
+        if first.lstrip("-+").isdigit():
+            continue
+        ver = _strip_channel(first)
+        try:
+            order_num = int(parts[1].strip())
+            rebills = [int(x.strip()) for x in parts[2].split(",") if x.strip()]
+        except ValueError:
+            continue
+        if ver not in result:
+            result[ver] = {}
+        if order_num not in result[ver]:
+            result[ver][order_num] = []
+        for r in rebills:
+            if r not in result[ver][order_num]:
+                result[ver][order_num].append(r)
+    return result
+
+
+def _build_singlechannel_blocks(control: VersionGroup, test: VersionGroup) -> str:
     blocks = []
     for side, vg in [("control", control), ("test", test)]:
-        ver_csv = _str_csv(vg.versions)
+        vers = [_strip_channel(v) for v in vg.versions]
+        ver_csv = _str_csv(vers)
         for order in vg.orders:
             rebills = _int_csv(order.rebill_counts)
             extra = f"\n      and {vg.extra_filter}" if vg.extra_filter else ""
             blocks.append(
-                f"    -- {side}: {', '.join(vg.versions)}, order {order.order_number}\n"
+                f"    -- {side}: {', '.join(vers)}, order {order.order_number}\n"
                 f"    (\n"
                 f"      json_value(ups_view.event_metadata, '$.upsell_order') = '{order.order_number}'\n"
                 f"      and {_UPSELL_VERSION_EXPR}\n"
@@ -41,10 +107,110 @@ def _build_cash_join_blocks(control: VersionGroup, test: VersionGroup) -> str:
     return "\n    or\n".join(blocks)
 
 
+def _build_multichannel_blocks(control: VersionGroup, test: VersionGroup) -> str:
+    """One block per (channel × order_number); ctrl and test for same channel go together."""
+    ctrl_ver_to_ch: Dict[str, str] = {}
+    for v in control.versions:
+        ch = _extract_channel(v)
+        if ch:
+            ctrl_ver_to_ch[_strip_channel(v)] = ch
+
+    test_ver_to_ch: Dict[str, str] = {}
+    for v in test.versions:
+        ch = _extract_channel(v)
+        if ch:
+            test_ver_to_ch[_strip_channel(v)] = ch
+
+    ctrl_pvo = _parse_per_version_orders(control.raw_orders)
+    test_pvo = _parse_per_version_orders(test.raw_orders)
+
+    # Channels in order of appearance
+    channels: List[str] = []
+    seen: Set[str] = set()
+    for ch in list(ctrl_ver_to_ch.values()) + list(test_ver_to_ch.values()):
+        if ch not in seen:
+            channels.append(ch)
+            seen.add(ch)
+
+    # All order numbers (from per-version data, fallback to merged)
+    order_nums: Set[int] = set()
+    for pvo in [ctrl_pvo, test_pvo]:
+        for ver_orders in pvo.values():
+            order_nums.update(ver_orders.keys())
+    if not order_nums:
+        for o in list(control.orders) + list(test.orders):
+            order_nums.add(o.order_number)
+
+    blocks = []
+    for channel in channels:
+        ch_sql = _CHANNEL_SQL.get(channel, f"json_value(fun.event_metadata, '$.channel') = '{channel}'")
+        ctrl_vers = [v for v, ch in ctrl_ver_to_ch.items() if ch == channel]
+        test_vers = [v for v, ch in test_ver_to_ch.items() if ch == channel]
+        all_vers = ctrl_vers + test_vers
+        if not all_vers:
+            continue
+        ver_csv = _str_csv(all_vers)
+
+        for order_num in sorted(order_nums):
+            rebills: Set[int] = set()
+            for ver in ctrl_vers:
+                if ver in ctrl_pvo and order_num in ctrl_pvo[ver]:
+                    rebills.update(ctrl_pvo[ver][order_num])
+            for ver in test_vers:
+                if ver in test_pvo and order_num in test_pvo[ver]:
+                    rebills.update(test_pvo[ver][order_num])
+            # Fallback to merged orders when per-version data is absent
+            if not rebills:
+                for o in control.orders:
+                    if o.order_number == order_num:
+                        rebills.update(o.rebill_counts)
+                for o in test.orders:
+                    if o.order_number == order_num:
+                        rebills.update(o.rebill_counts)
+            if not rebills:
+                continue
+
+            ctrl_lbl = ", ".join(ctrl_vers) if ctrl_vers else "—"
+            test_lbl = ", ".join(test_vers) if test_vers else "—"
+            blocks.append(
+                f"    -- {channel}, order {order_num}: ctrl={ctrl_lbl} / test={test_lbl}\n"
+                f"    (\n"
+                f"      json_value(ups_view.event_metadata, '$.upsell_order') = '{order_num}'\n"
+                f"      and {ch_sql}\n"
+                f"      and {_UPSELL_VERSION_EXPR}\n"
+                f"          in ({ver_csv})\n"
+                f"      and cash.rebill_count in ({_int_csv(sorted(rebills))})\n"
+                f"    )"
+            )
+    return "\n    or\n".join(blocks)
+
+
+def _build_cash_join_blocks(control: VersionGroup, test: VersionGroup) -> str:
+    if _is_multichannel(control.versions) or _is_multichannel(test.versions):
+        return _build_multichannel_blocks(control, test)
+    return _build_singlechannel_blocks(control, test)
+
+
 def _country_filter(config: ABTestConfig) -> str:
     if not config.filters.exclude_countries:
         return ""
     return f"\n    and fun.country_code not in ({_str_csv(config.filters.exclude_countries)})"
+
+
+def _build_channel_where_filter(config: ABTestConfig) -> str:
+    channels: List[str] = []
+    seen: Set[str] = set()
+    for v in config.control.versions + config.test.versions:
+        ch = _extract_channel(v)
+        if ch and ch not in seen:
+            channels.append(ch)
+            seen.add(ch)
+    parts = []
+    for ch in channels:
+        sql = _CHANNEL_SQL.get(ch)
+        if sql:
+            parts.append(f"    {sql}")
+    return "\n    or\n".join(parts)
 
 
 def _extra_where(config: ABTestConfig) -> str:
@@ -53,6 +219,10 @@ def _extra_where(config: ABTestConfig) -> str:
         lines.append(f"  and ups_view.ip not in ({_str_csv(config.filters.exclude_ips)})")
     for cond in config.filters.extra_conditions:
         lines.append(f"  and {cond}")
+    if _is_multichannel(config.control.versions) or _is_multichannel(config.test.versions):
+        ch_filter = _build_channel_where_filter(config)
+        if ch_filter:
+            lines.append(f"  and (\n{ch_filter}\n  )")
     return ("\n" + "\n".join(lines)) if lines else ""
 
 
@@ -61,8 +231,10 @@ def build_query(config: ABTestConfig, end_date=None) -> str:
         return config.custom_sql
     ts = _fmt_ts(config.release_date)
     ts_end = _fmt_ts(end_date) if end_date else _fmt_ts(config.end_date) if config.end_date else None
+
+    all_clean = [_strip_channel(v) for v in config.control.versions + config.test.versions]
     all_rebills = _int_csv(config.all_rebill_counts())
-    all_versions = _str_csv(config.all_version_names())
+    all_versions = _str_csv(all_clean)
     cash_join_blocks = _build_cash_join_blocks(config.control, config.test)
     country_cte = _country_filter(config)
     extra_where = _extra_where(config)

@@ -81,9 +81,11 @@ def _build_config(
         test_name=test_name,
         release_date=release_date,
         control=VersionGroup(versions=ctrl_versions, orders=ctrl_orders,
-                             extra_filter=ctrl_extra_filter.strip() or None),
+                             extra_filter=ctrl_extra_filter.strip() or None,
+                             raw_orders=ctrl_orders_str),
         test=VersionGroup(versions=test_versions, orders=test_orders,
-                          extra_filter=test_extra_filter.strip() or None),
+                          extra_filter=test_extra_filter.strip() or None,
+                          raw_orders=test_orders_str),
         filters=QueryFilters(extra_conditions=conditions),
         slack_channel=slack_channel,
     )
@@ -178,25 +180,21 @@ async def new_test_generate(
 
     sql_preview = ""
     try:
-        from ab_agent.agents.sql_agent import SQLAgent
-        sql_preview = SQLAgent().generate(config_data)
+        preview_config = _build_config(
+            test_name=config_data.get("test_name", ""),
+            release_date_str=config_data.get("release_date") or datetime.utcnow().strftime("%Y-%m-%dT%H:%M"),
+            slack_channel=config_data.get("slack_channel", ""),
+            ctrl_versions_str=config_data.get("ctrl_versions", ""),
+            ctrl_orders_str=config_data.get("ctrl_orders", ""),
+            ctrl_extra_filter=config_data.get("ctrl_extra_filter", ""),
+            test_versions_str=config_data.get("test_versions", ""),
+            test_orders_str=config_data.get("test_orders", ""),
+            test_extra_filter=config_data.get("test_extra_filter", ""),
+            extra_conditions_str=config_data.get("extra_conditions", ""),
+        )
+        sql_preview = build_query(preview_config)
     except Exception as e:
-        try:
-            preview_config = _build_config(
-                test_name=config_data.get("test_name", ""),
-                release_date_str=config_data.get("release_date") or datetime.utcnow().strftime("%Y-%m-%dT%H:%M"),
-                slack_channel=config_data.get("slack_channel", ""),
-                ctrl_versions_str=config_data.get("ctrl_versions", ""),
-                ctrl_orders_str=config_data.get("ctrl_orders", ""),
-                ctrl_extra_filter=config_data.get("ctrl_extra_filter", ""),
-                test_versions_str=config_data.get("test_versions", ""),
-                test_orders_str=config_data.get("test_orders", ""),
-                test_extra_filter=config_data.get("test_extra_filter", ""),
-                extra_conditions_str=config_data.get("extra_conditions", ""),
-            )
-            sql_preview = build_query(preview_config)
-        except Exception as e2:
-            sql_preview = f"-- Could not generate SQL: {e2}"
+        sql_preview = f"-- Could not generate SQL: {e}"
 
     final_history = history + [
         {"role": "user", "content": current_user_msg},
@@ -261,18 +259,14 @@ async def generate_sql_from_form(
     sql = ""
     error = None
     try:
-        from ab_agent.agents.sql_agent import SQLAgent
-        sql = SQLAgent().generate(config_dict)
+        cfg = _build_config(
+            test_name, release_date or datetime.utcnow().strftime("%Y-%m-%dT%H:%M"),
+            slack_channel, ctrl_versions, ctrl_orders, ctrl_extra_filter,
+            test_versions, test_orders, test_extra_filter, extra_conditions,
+        )
+        sql = build_query(cfg)
     except Exception as e:
-        try:
-            cfg = _build_config(
-                test_name, release_date or datetime.utcnow().strftime("%Y-%m-%dT%H:%M"),
-                slack_channel, ctrl_versions, ctrl_orders, ctrl_extra_filter,
-                test_versions, test_orders, test_extra_filter, extra_conditions,
-            )
-            sql = build_query(cfg)
-        except Exception as e2:
-            error = f"Could not generate SQL: {e2}"
+        error = f"Could not generate SQL: {e}"
     vals["custom_sql"] = sql
     return templates.TemplateResponse(
         request, "create_test.html",
@@ -556,25 +550,21 @@ async def edit_generate(
 
     sql_preview = ""
     try:
-        from ab_agent.agents.sql_agent import SQLAgent
-        sql_preview = SQLAgent().generate(config_data)
-    except Exception:
-        try:
-            preview_config = _build_config(
-                test_name=config_data.get("test_name", ""),
-                release_date_str=config_data.get("release_date") or datetime.utcnow().strftime("%Y-%m-%dT%H:%M"),
-                slack_channel=config_data.get("slack_channel", ""),
-                ctrl_versions_str=config_data.get("ctrl_versions", ""),
-                ctrl_orders_str=config_data.get("ctrl_orders", ""),
-                ctrl_extra_filter=config_data.get("ctrl_extra_filter", ""),
-                test_versions_str=config_data.get("test_versions", ""),
-                test_orders_str=config_data.get("test_orders", ""),
-                test_extra_filter=config_data.get("test_extra_filter", ""),
-                extra_conditions_str=config_data.get("extra_conditions", ""),
-            )
-            sql_preview = build_query(preview_config)
-        except Exception as e2:
-            sql_preview = f"-- Could not generate SQL: {e2}"
+        preview_config = _build_config(
+            test_name=config_data.get("test_name", ""),
+            release_date_str=config_data.get("release_date") or datetime.utcnow().strftime("%Y-%m-%dT%H:%M"),
+            slack_channel=config_data.get("slack_channel", ""),
+            ctrl_versions_str=config_data.get("ctrl_versions", ""),
+            ctrl_orders_str=config_data.get("ctrl_orders", ""),
+            ctrl_extra_filter=config_data.get("ctrl_extra_filter", ""),
+            test_versions_str=config_data.get("test_versions", ""),
+            test_orders_str=config_data.get("test_orders", ""),
+            test_extra_filter=config_data.get("test_extra_filter", ""),
+            extra_conditions_str=config_data.get("extra_conditions", ""),
+        )
+        sql_preview = build_query(preview_config)
+    except Exception as e2:
+        sql_preview = f"-- Could not generate SQL: {e2}"
 
     final_history = history + [
         {"role": "user", "content": current_user_msg},
@@ -639,18 +629,14 @@ async def edit_generate_sql(
     sql = ""
     error = None
     try:
-        from ab_agent.agents.sql_agent import SQLAgent
-        sql = SQLAgent().generate(config_dict)
+        cfg = _build_config(
+            test_name, release_date or datetime.utcnow().strftime("%Y-%m-%dT%H:%M"),
+            slack_channel, ctrl_versions, ctrl_orders, ctrl_extra_filter,
+            test_versions, test_orders, test_extra_filter, extra_conditions,
+        )
+        sql = build_query(cfg)
     except Exception as e:
-        try:
-            cfg = _build_config(
-                test_name, release_date or datetime.utcnow().strftime("%Y-%m-%dT%H:%M"),
-                slack_channel, ctrl_versions, ctrl_orders, ctrl_extra_filter,
-                test_versions, test_orders, test_extra_filter, extra_conditions,
-            )
-            sql = build_query(cfg)
-        except Exception as e2:
-            error = f"Could not generate SQL: {e2}"
+        error = f"Could not generate SQL: {e}"
     vals["custom_sql"] = sql
     return templates.TemplateResponse(
         request, "edit_test.html",
@@ -671,13 +657,13 @@ async def edit_test_form(request: Request, test_id: str):
         "release_date": config.release_date.strftime("%Y-%m-%dT%H:%M"),
         "slack_channel": config.slack_channel or "",
         "ctrl_versions": ", ".join(config.control.versions),
-        "ctrl_orders": "\n".join(
+        "ctrl_orders": config.control.raw_orders or "\n".join(
             f"{o.order_number}: {','.join(str(r) for r in o.rebill_counts)}"
             for o in config.control.orders
         ),
         "ctrl_extra_filter": config.control.extra_filter or "",
         "test_versions": ", ".join(config.test.versions),
-        "test_orders": "\n".join(
+        "test_orders": config.test.raw_orders or "\n".join(
             f"{o.order_number}: {','.join(str(r) for r in o.rebill_counts)}"
             for o in config.test.orders
         ),

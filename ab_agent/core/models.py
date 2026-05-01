@@ -33,6 +33,7 @@ class VersionGroup(BaseModel):
     versions: List[str]
     orders: List[OrderConfig]
     extra_filter: Optional[str] = None
+    raw_orders: str = ""
 
     @field_validator("versions")
     @classmethod
