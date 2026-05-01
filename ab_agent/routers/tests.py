@@ -206,7 +206,12 @@ async def new_test_generate(
     }
     return templates.TemplateResponse(
         request, "create_test.html",
-        {"vals": vals, "chat_history": _build_chat_history(final_history), "ai_generated": True},
+        {
+            "vals": vals,
+            "chat_history": _build_chat_history(final_history),
+            "ai_generated": True,
+            "history_json": json.dumps(final_history),
+        },
     )
 
 
@@ -308,6 +313,7 @@ async def create_test(
     extra_conditions: str = Form(""),
     ai_filter: Optional[str] = Form(None),
     custom_sql: str = Form(""),
+    chat_history_json: str = Form(""),
 ):
     try:
         config = _build_config(
@@ -319,7 +325,7 @@ async def create_test(
         if custom_sql.strip():
             config = config.model_copy(update={"custom_sql": custom_sql.strip()})
         test_id = str(uuid.uuid4())
-        TestRepo().create(test_id, config.test_name, config.model_dump_json())
+        TestRepo().create(test_id, config.test_name, config.model_dump_json(), chat_history_json)
         _do_initial_refresh(test_id)
         return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
     except Exception as e:
@@ -330,7 +336,7 @@ async def create_test(
             "extra_conditions": extra_conditions, "custom_sql": custom_sql,
         }
         return templates.TemplateResponse(
-            request, "create_test.html", {"vals": vals, "error": str(e)}
+            request, "create_test.html", {"vals": vals, "error": str(e), "history_json": chat_history_json}
         )
 
 
@@ -573,7 +579,13 @@ async def edit_generate(
     }
     return templates.TemplateResponse(
         request, "edit_test.html",
-        {"test": test, "vals": vals, "chat_history": _build_chat_history(final_history), "ai_generated": True},
+        {
+            "test": test,
+            "vals": vals,
+            "chat_history": _build_chat_history(final_history),
+            "ai_generated": True,
+            "history_json": json.dumps(final_history),
+        },
     )
 
 
@@ -626,7 +638,8 @@ async def edit_generate_sql(
     vals["custom_sql"] = sql
     return templates.TemplateResponse(
         request, "edit_test.html",
-        {"test": test, "vals": vals, "chat_history": [], "ai_generated": bool(sql), "error": error},
+        {"test": test, "vals": vals, "chat_history": [], "ai_generated": bool(sql), "error": error,
+         "history_json": test.get("chat_history_json") or "[]"},
     )
 
 
@@ -656,8 +669,15 @@ async def edit_test_form(request: Request, test_id: str):
         "extra_conditions": "\n".join(config.filters.extra_conditions),
         "custom_sql": config.custom_sql or "",
     }
+    raw_history = test.get("chat_history_json") or "[]"
+    chat_history = []
+    try:
+        chat_history = _build_chat_history(json.loads(raw_history))
+    except Exception:
+        pass
     return templates.TemplateResponse(
-        request, "edit_test.html", {"test": test, "vals": vals, "error": None}
+        request, "edit_test.html",
+        {"test": test, "vals": vals, "error": None, "chat_history": chat_history, "history_json": raw_history},
     )
 
 
@@ -676,6 +696,7 @@ async def edit_test(
     test_extra_filter: str = Form(""),
     extra_conditions: str = Form(""),
     custom_sql: str = Form(""),
+    chat_history_json: str = Form(""),
 ):
     test = TestRepo().get(test_id)
     if not test:
@@ -699,12 +720,21 @@ async def edit_test(
         repo = TestRepo()
         repo.update_config(test_id, config.model_dump_json())
         repo.update_name(test_id, config.test_name)
+        if chat_history_json:
+            repo.update_chat_history(test_id, chat_history_json)
         _do_initial_refresh(test_id)
     except Exception as e:
         return templates.TemplateResponse(
-            request, "edit_test.html", {"test": test, "vals": vals, "error": str(e)}
+            request, "edit_test.html",
+            {"test": test, "vals": vals, "error": str(e), "chat_history": [], "history_json": chat_history_json},
         )
     return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
+
+
+@router.post("/tests/{test_id}/delete")
+async def delete_test(test_id: str):
+    TestRepo().delete(test_id)
+    return RedirectResponse(url="/", status_code=303)
 
 
 @router.get("/tests/{test_id}/dashboard")

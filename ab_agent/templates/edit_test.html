@@ -37,6 +37,17 @@
   <form method="post" action="/tests/{{ test.id }}/edit/generate">
     <input type="hidden" name="description" value="{{ description | e }}" />
     <input type="hidden" name="history_json" value="{{ history_json | e }}" />
+    <input type="hidden" name="test_name" value="{{ vals.test_name | e }}" />
+    <input type="hidden" name="release_date" value="{{ vals.release_date | e }}" />
+    <input type="hidden" name="slack_channel" value="{{ vals.slack_channel | e }}" />
+    <input type="hidden" name="ctrl_versions" value="{{ vals.ctrl_versions | e }}" />
+    <input type="hidden" name="ctrl_orders" value="{{ vals.ctrl_orders | e }}" />
+    <input type="hidden" name="ctrl_extra_filter" value="{{ vals.ctrl_extra_filter | e }}" />
+    <input type="hidden" name="test_versions" value="{{ vals.test_versions | e }}" />
+    <input type="hidden" name="test_orders" value="{{ vals.test_orders | e }}" />
+    <input type="hidden" name="test_extra_filter" value="{{ vals.test_extra_filter | e }}" />
+    <input type="hidden" name="extra_conditions" value="{{ vals.extra_conditions | e }}" />
+    <input type="hidden" name="custom_sql" value="{{ vals.custom_sql | e }}" />
     <div style="display:flex;gap:.5rem;align-items:flex-end">
       <textarea name="answer" rows="2" placeholder="Your answer..."
         style="flex:1;margin:0;font-size:.88rem;resize:none" required></textarea>
@@ -58,6 +69,7 @@
 
 {# ── Main Form ───────────────────────────────────────────────────────── #}
 <form method="post" action="/tests/{{ test.id }}/edit">
+  <input type="hidden" name="chat_history_json" value="{{ history_json | default('') | e }}" />
 
   <div class="card">
     {% if error %}

@@ -28,11 +28,11 @@ def _execute(conn, sql: str, params: tuple = ()) -> None:
 
 
 class TestRepo:
-    def create(self, test_id: str, test_name: str, config_json: str) -> None:
+    def create(self, test_id: str, test_name: str, config_json: str, chat_history_json: str = "") -> None:
         conn = get_connection()
         _execute(conn,
-            "INSERT INTO tests (id, test_name, config_json, status, created_at) VALUES (%s,%s,%s,'running',%s)",
-            (test_id, test_name, config_json, datetime.utcnow().isoformat()),
+            "INSERT INTO tests (id, test_name, config_json, status, created_at, chat_history_json) VALUES (%s,%s,%s,'running',%s,%s)",
+            (test_id, test_name, config_json, datetime.utcnow().isoformat(), chat_history_json or ""),
         )
 
     def list_all(self) -> List[dict]:
@@ -53,6 +53,15 @@ class TestRepo:
 
     def update_name(self, test_id: str, test_name: str) -> None:
         _execute(get_connection(), "UPDATE tests SET test_name=%s WHERE id=%s", (test_name, test_id))
+
+    def update_chat_history(self, test_id: str, chat_history_json: str) -> None:
+        _execute(get_connection(), "UPDATE tests SET chat_history_json=%s WHERE id=%s", (chat_history_json, test_id))
+
+    def delete(self, test_id: str) -> None:
+        conn = get_connection()
+        _execute(conn, "DELETE FROM analyses WHERE test_id=%s", (test_id,))
+        _execute(conn, "DELETE FROM snapshots WHERE test_id=%s", (test_id,))
+        _execute(conn, "DELETE FROM tests WHERE id=%s", (test_id,))
 
 
 class SnapshotRepo:

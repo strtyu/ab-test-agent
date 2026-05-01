@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS tests (
     ended_at TEXT
 );
 
+ALTER TABLE tests ADD COLUMN IF NOT EXISTS chat_history_json TEXT;
+
 CREATE TABLE IF NOT EXISTS snapshots (
     id TEXT PRIMARY KEY,
     test_id TEXT NOT NULL REFERENCES tests(id),

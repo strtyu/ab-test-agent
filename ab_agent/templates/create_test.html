@@ -61,6 +61,7 @@
 {# ── Main Form ───────────────────────────────────────────────────────── #}
 <form method="post" action="/tests/create">
   <input type="hidden" name="ai_filter" value="0" />
+  <input type="hidden" name="chat_history_json" value="{{ history_json | default('') | e }}" />
 
   <div class="card">
     {% if error %}
