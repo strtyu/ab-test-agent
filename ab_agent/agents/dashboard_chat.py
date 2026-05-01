@@ -65,6 +65,7 @@ Rules for <add_metric> expr:
 - type: abs = absolute count/amount, rel = rate/ratio
 - format: pct=0.1234→"12.34%", int=integer, money=$xx.xx, f1=one decimal, f4=four decimals
 - hi: true if higher value is better for the test
+- IMPORTANT: All SQL must use ASCII characters only — write comments in English, no Cyrillic
 """
 
 _SYSTEM_METRICS = """\
@@ -124,6 +125,7 @@ Rules for diagnostic queries:
 - Use the table structure visible in the SQL context provided below
 - Filter by the test's versions and release date to keep results relevant
 - If no SQL context is available, ask the user for the table names first
+- IMPORTANT: Write all SQL in English only — no Cyrillic or non-ASCII characters anywhere in comments or strings
 
 Output ONE <run_query> per message. After seeing results, interpret and suggest the next step.
 """

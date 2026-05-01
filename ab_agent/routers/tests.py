@@ -810,6 +810,8 @@ async def api_run_diagnostic(test_id: str, request: Request):
         sql = body.get("sql", "").strip()
         if not sql:
             return JSONResponse({"ok": False, "error": "No SQL provided"})
+        # BigQuery rejects non-ASCII characters — strip them (e.g. Cyrillic comments)
+        sql = sql.encode("ascii", errors="ignore").decode("ascii")
         # safety limit
         if "limit" not in sql.lower():
             sql = sql + "\nLIMIT 500"
