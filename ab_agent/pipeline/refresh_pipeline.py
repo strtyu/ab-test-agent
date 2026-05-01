@@ -10,7 +10,7 @@ from ab_agent.core.models import ABTestConfig
 from ab_agent.db.repository import SnapshotRepo, TestRepo
 from ab_agent.integrations.storage import ArtifactStore
 from ab_agent.stats.engine import calc_metrics, serialize_metrics
-from ab_agent.visualization.infographic import compute_slices, render_html_dashboard_string
+from ab_agent.visualization.infographic import compute_slices, render_html_dashboard_string, build_rows_for_dashboard
 from ab_agent.visualization.screenshot import render_summary_png
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,7 @@ def _do_refresh(test_id: str) -> None:
     ctrl_m = calc_metrics(ctrl_df)
     test_m = calc_metrics(test_df)
     slices, dim_values = compute_slices(ctrl_df, test_df, calc_metrics)
+    rows = build_rows_for_dashboard(ctrl_df, test_df)
 
     store = ArtifactStore()
     store.ensure_dirs()
@@ -55,7 +56,7 @@ def _do_refresh(test_id: str) -> None:
     png_path = store.screenshot_path(snap_id, "summary")
     render_summary_png(ctrl_m, test_m, config, png_path)
 
-    dashboard_html = render_html_dashboard_string(slices, dim_values, config)
+    dashboard_html = render_html_dashboard_string(rows, config, ctrl_versions_clean, test_versions_clean)
 
     SnapshotRepo().save(
         snapshot_id=snap_id,
