@@ -51,6 +51,9 @@ class TestRepo:
     def update_config(self, test_id: str, config_json: str) -> None:
         _execute(get_connection(), "UPDATE tests SET config_json=%s WHERE id=%s", (config_json, test_id))
 
+    def update_name(self, test_id: str, test_name: str) -> None:
+        _execute(get_connection(), "UPDATE tests SET test_name=%s WHERE id=%s", (test_name, test_id))
+
 
 class SnapshotRepo:
     def save(

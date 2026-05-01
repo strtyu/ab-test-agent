@@ -356,6 +356,83 @@ async def analysis_detail(request: Request, test_id: str, analysis_id: str):
     )
 
 
+@router.get("/tests/{test_id}/edit", response_class=HTMLResponse)
+async def edit_test_form(request: Request, test_id: str):
+    test = TestRepo().get(test_id)
+    if not test:
+        return RedirectResponse(url="/", status_code=303)
+    config = ABTestConfig.model_validate_json(test["config_json"])
+
+    vals = {
+        "test_name": config.test_name,
+        "release_date": config.release_date.strftime("%Y-%m-%dT%H:%M"),
+        "slack_channel": config.slack_channel or "",
+        "ctrl_versions": ", ".join(config.control.versions),
+        "ctrl_orders": "\n".join(
+            f"{o.order_number}: {','.join(str(r) for r in o.rebill_counts)}"
+            for o in config.control.orders
+        ),
+        "ctrl_extra_filter": config.control.extra_filter or "",
+        "test_versions": ", ".join(config.test.versions),
+        "test_orders": "\n".join(
+            f"{o.order_number}: {','.join(str(r) for r in o.rebill_counts)}"
+            for o in config.test.orders
+        ),
+        "test_extra_filter": config.test.extra_filter or "",
+        "extra_conditions": "\n".join(config.filters.extra_conditions),
+        "custom_sql": config.custom_sql or "",
+    }
+    return templates.TemplateResponse(
+        request, "edit_test.html", {"test": test, "vals": vals, "error": None}
+    )
+
+
+@router.post("/tests/{test_id}/edit", response_class=HTMLResponse)
+async def edit_test(
+    request: Request,
+    test_id: str,
+    test_name: str = Form(...),
+    release_date: str = Form(...),
+    slack_channel: str = Form(""),
+    ctrl_versions: str = Form(...),
+    ctrl_orders: str = Form(...),
+    ctrl_extra_filter: str = Form(""),
+    test_versions: str = Form(...),
+    test_orders: str = Form(...),
+    test_extra_filter: str = Form(""),
+    extra_conditions: str = Form(""),
+    custom_sql: str = Form(""),
+):
+    test = TestRepo().get(test_id)
+    if not test:
+        return RedirectResponse(url="/", status_code=303)
+
+    vals = {
+        "test_name": test_name, "release_date": release_date, "slack_channel": slack_channel,
+        "ctrl_versions": ctrl_versions, "ctrl_orders": ctrl_orders, "ctrl_extra_filter": ctrl_extra_filter,
+        "test_versions": test_versions, "test_orders": test_orders, "test_extra_filter": test_extra_filter,
+        "extra_conditions": extra_conditions, "custom_sql": custom_sql,
+    }
+    try:
+        config = _build_config(
+            test_name, release_date, slack_channel,
+            ctrl_versions, ctrl_orders, ctrl_extra_filter,
+            test_versions, test_orders, test_extra_filter,
+            extra_conditions,
+        )
+        if custom_sql.strip():
+            config = config.model_copy(update={"custom_sql": custom_sql.strip()})
+        repo = TestRepo()
+        repo.update_config(test_id, config.model_dump_json())
+        repo.update_name(test_id, config.test_name)
+        _do_initial_refresh(test_id)
+    except Exception as e:
+        return templates.TemplateResponse(
+            request, "edit_test.html", {"test": test, "vals": vals, "error": str(e)}
+        )
+    return RedirectResponse(url=f"/tests/{test_id}", status_code=303)
+
+
 @router.get("/tests/{test_id}/dashboard")
 async def test_dashboard(test_id: str):
     snap = SnapshotRepo().latest(test_id)
