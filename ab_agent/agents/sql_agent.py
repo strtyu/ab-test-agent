@@ -308,9 +308,18 @@ class SQLAgent:
 
         sql = (resp.choices[0].message.content or "").strip()
         # Strip markdown fences if present
-        if sql.startswith("```"):
-            sql = sql.split("```", 2)[1]
-            if sql.startswith("sql"):
-                sql = sql[3:]
-            sql = sql.strip()
+        if "```" in sql:
+            parts = sql.split("```")
+            # Find the SQL block (after opening fence)
+            for i, part in enumerate(parts):
+                if i % 2 == 1:  # inside a fence
+                    if part.startswith("sql"):
+                        part = part[3:]
+                    sql = part.strip()
+                    break
+        # Strip any prose before the first SQL keyword
+        import re
+        match = re.search(r'(?i)^\s*(with|select)\b', sql, re.MULTILINE)
+        if match:
+            sql = sql[match.start():].strip()
         return sql
