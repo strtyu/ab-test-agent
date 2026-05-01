@@ -586,9 +586,33 @@ function toggleChat(){
   p.classList.toggle('open',chatOpen);
   document.getElementById('chat-fab').textContent=chatOpen?'✕ Close':'💬 Ask AI';
 }
+function md2html(t){
+  const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const lines=t.split('\n');
+  let out='',inUl=false;
+  for(let raw of lines){
+    const l=raw.trimEnd();
+    const bullet=l.match(/^[-*•]\s+(.*)/);
+    if(bullet){
+      if(!inUl){out+='<ul style="margin:4px 0 4px 16px;padding:0">';inUl=true;}
+      out+='<li>'+fmtInline(esc(bullet[1]))+'</li>';
+    } else {
+      if(inUl){out+='</ul>';inUl=false;}
+      if(l===''){out+='<br>';}
+      else{out+='<span>'+fmtInline(esc(l))+'</span><br>';}
+    }
+  }
+  if(inUl)out+='</ul>';
+  return out;
+}
+function fmtInline(s){
+  return s.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\*(.+?)\*/g,'<i>$1</i>');
+}
 function appendMsg(role,text){
   const d=document.createElement('div');
-  d.className='chat-msg '+role;d.textContent=text;
+  d.className='chat-msg '+role;
+  if(role==='ai') d.innerHTML=md2html(text);
+  else d.textContent=text;
   const c=document.getElementById('chat-msgs');
   c.appendChild(d);c.scrollTop=c.scrollHeight;
 }
