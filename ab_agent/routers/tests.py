@@ -788,13 +788,46 @@ async def api_test_chat(test_id: str, request: Request):
             metrics_summary=body.get("metrics_summary", {}),
             history=body.get("history", []),
             current_sql=config.custom_sql or "",
+            mode=body.get("mode", "analysis"),
+            custom_metrics=body.get("custom_metrics", []),
         )
         return JSONResponse(result)
     except Exception as e:
         return JSONResponse({"reply": f"Error: {e}", "actions": []})
 
 
-@router.post("/api/tests/{test_id}/update-sql")
+@router.post("/api/tests/{test_id}/run-diagnostic")
+async def api_run_diagnostic(test_id: str, request: Request):
+    try:
+        body = await request.json()
+        sql = body.get("sql", "").strip()
+        if not sql:
+            return JSONResponse({"ok": False, "error": "No SQL provided"})
+        # safety limit
+        if "limit" not in sql.lower():
+            sql = sql + "\nLIMIT 500"
+        from ab_agent.bigquery.client import BQClient
+        df = BQClient().execute(sql, use_cache=False)
+        columns = list(df.columns)
+        rows = [[str(v) if v is not None else None for v in row] for row in df.itertuples(index=False, name=None)]
+        rows = rows[:500]
+        return JSONResponse({"ok": True, "columns": columns, "rows": rows})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
+
+
+@router.post("/api/tests/{test_id}/remove-metric")
+async def api_remove_metric(test_id: str, request: Request):
+    try:
+        body = await request.json()
+        name = body.get("name", "").strip()
+        if not name:
+            return JSONResponse({"ok": False, "error": "No metric name provided"})
+        CustomMetricRepo().delete(name)
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
+
 async def api_update_sql(test_id: str, request: Request):
     try:
         body = await request.json()

@@ -201,6 +201,16 @@ tbody tr:last-child td{border-bottom:none}
   cursor:pointer;font-size:14px;flex-shrink:0;transition:background .12s}
 #chat-send:hover{background:#1255D6}
 #chat-send:disabled{background:#CBD5E1;cursor:default}
+.chat-modes{display:flex;border-bottom:1px solid #E2E8F0}
+.mode-btn{flex:1;padding:7px 4px;font-size:10.5px;font-weight:600;border:none;background:none;
+  cursor:pointer;color:#94A3B8;border-bottom:2px solid transparent;transition:all .15s;line-height:1.3}
+.mode-btn.active{color:#1664F5;border-bottom-color:#1664F5}
+.mode-btn:hover:not(.active){color:#475569}
+.qr-wrap{overflow-x:auto;max-width:100%;margin-top:2px}
+.qr-table{border-collapse:collapse;font-size:10.5px;min-width:100%}
+.qr-table th{background:#E2E8F0;padding:4px 7px;text-align:left;white-space:nowrap;font-weight:700;color:#334155}
+.qr-table td{padding:3px 7px;border-bottom:1px solid #F1F5F9;color:#475569;white-space:nowrap}
+.qr-table tr:last-child td{border-bottom:none}
 /* ── Add metric modal ── */
 .mm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;
   align-items:center;justify-content:center;z-index:300}
@@ -598,27 +608,40 @@ function render(){
 render();
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
-let chatOpen=false, chatHistory=[], pendingMetric=null, pendingSql=null, pendingMetricAfterSql=null;
+let chatOpen=false, pendingMetric=null, pendingSql=null, pendingMetricAfterSql=null;
+let currentMode='analysis';
+const historyByMode={analysis:[],metrics:[],diagnostics:[]};
+const MODE_GREET={
+  analysis:'Hi! I can see the current test data. Ask me anything about the results.',
+  metrics:'I can help manage metrics on this dashboard \u2014 add new ones or remove existing ones. What would you like to do?',
+  diagnostics:'I can help diagnose data issues \u2014 missing events, wrong counts, null values, etc. What symptom are you seeing? I\u2019ll suggest what to check.'
+};
 function toggleChat(){
   chatOpen=!chatOpen;
   const p=document.getElementById('chat-panel');
   p.classList.toggle('open',chatOpen);
-  document.getElementById('chat-fab').textContent=chatOpen?'✕ Close':'💬 Ask AI';
+  document.getElementById('chat-fab').textContent=chatOpen?'\u2715 Close':'\ud83d\udcac Ask AI';
 }
+function switchMode(m){
+  currentMode=m;
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
+  const c=document.getElementById('chat-msgs');
+  c.innerHTML='<div class="chat-msg ai">'+escHtml(MODE_GREET[m])+'</div>';
+}
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function md2html(t){
-  const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const lines=t.split('\n');
   let out='',inUl=false;
   for(let raw of lines){
     const l=raw.trimEnd();
-    const bullet=l.match(/^[-*•]\s+(.*)/);
+    const bullet=l.match(/^[-*\u2022]\s+(.*)/);
     if(bullet){
       if(!inUl){out+='<ul style="margin:4px 0 4px 16px;padding:0">';inUl=true;}
-      out+='<li>'+fmtInline(esc(bullet[1]))+'</li>';
-    } else {
+      out+='<li>'+fmtInline(escHtml(bullet[1]))+'</li>';
+    }else{
       if(inUl){out+='</ul>';inUl=false;}
       if(l===''){out+='<br>';}
-      else{out+='<span>'+fmtInline(esc(l))+'</span><br>';}
+      else{out+='<span>'+fmtInline(escHtml(l))+'</span><br>';}
     }
   }
   if(inUl)out+='</ul>';
@@ -630,49 +653,107 @@ function fmtInline(s){
 function appendMsg(role,text){
   const d=document.createElement('div');
   d.className='chat-msg '+role;
-  if(role==='ai') d.innerHTML=md2html(text);
+  if(role==='ai')d.innerHTML=md2html(text);
   else d.textContent=text;
   const c=document.getElementById('chat-msgs');
   c.appendChild(d);c.scrollTop=c.scrollHeight;
 }
-function removeThinking(){
-  const t=document.querySelector('.chat-msg.thinking');if(t)t.remove();
+function appendQueryTable(result){
+  const wrap=document.getElementById('chat-msgs');
+  const d=document.createElement('div');
+  d.className='chat-msg ai';
+  if(!result.ok){d.textContent='Query error: '+(result.error||'unknown');wrap.appendChild(d);wrap.scrollTop=9999;return;}
+  const {columns,rows}=result;
+  let h='<div class="qr-wrap"><table class="qr-table"><thead><tr>';
+  h+=columns.map(c=>'<th>'+escHtml(String(c))+'</th>').join('');
+  h+='</tr></thead><tbody>';
+  rows.forEach(r=>{h+='<tr>'+r.map(v=>'<td>'+(v!=null?escHtml(String(v)):'&#8212;')+'</td>').join('')+'</tr>';});
+  h+='</tbody></table></div>';
+  if(rows.length===500)h+='<span style="font-size:10px;color:#94A3B8">(limited to 500 rows)</span>';
+  d.innerHTML=h;wrap.appendChild(d);wrap.scrollTop=9999;
+}
+function removeThinking(){const t=document.querySelector('.chat-msg.thinking');if(t)t.remove();}
+async function callChatAPI(message,metricsOverride){
+  const vr=getRows();
+  const cM=calcM(vr.filter(r=>r.grp==='ctrl'));
+  const tM=calcM(vr.filter(r=>r.grp==='test'));
+  const res=await fetch('/api/tests/'+TEST_ID+'/chat',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      message:message,
+      history:historyByMode[currentMode].slice(-20),
+      metrics_summary:metricsOverride||{ctrl:cM,test:tM},
+      mode:currentMode,
+      custom_metrics:CUSTOM_M_DEFS
+    })
+  });
+  return res.json();
+}
+async function handleActions(actions){
+  const sqlAct=actions.find(a=>a.type==='update_sql');
+  const metricAct=actions.find(a=>a.type==='add_metric');
+  const queryAct=actions.find(a=>a.type==='run_query');
+  const removeAct=actions.find(a=>a.type==='remove_metric');
+  if(sqlAct){
+    pendingSql=sqlAct.sql;
+    pendingMetricAfterSql=metricAct?metricAct.metric_def:null;
+    openSqlModal(sqlAct.sql);
+  }else if(metricAct){
+    pendingMetric=metricAct.metric_def;
+    openMetricModal(metricAct.metric_def);
+  }
+  if(removeAct) await handleRemoveMetric(removeAct.name,removeAct.display||removeAct.name);
+  if(queryAct) await runDiagnosticQuery(queryAct.sql);
+}
+async function runDiagnosticQuery(sql){
+  const wrap=document.getElementById('chat-msgs');
+  const thk=document.createElement('div');
+  thk.className='chat-msg thinking';thk.textContent='Running query\u2026';
+  wrap.appendChild(thk);wrap.scrollTop=9999;
+  let result;
+  try{
+    const res=await fetch('/api/tests/'+TEST_ID+'/run-diagnostic',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sql:sql})
+    });
+    result=await res.json();
+  }catch(e){result={ok:false,error:e.message};}
+  thk.remove();
+  appendQueryTable(result);
+  const summary=result.ok
+    ?('Query returned '+result.rows.length+' row(s). Columns: '+result.columns.join(', ')+'.\n'
+      +result.rows.slice(0,8).map(r=>r.join(' | ')).join('\n'))
+    :('Query error: '+result.error);
+  historyByMode[currentMode].push({role:'user',content:'[Query result]\n'+summary});
+  const thk2=document.createElement('div');
+  thk2.className='chat-msg thinking';thk2.textContent='Analyzing\u2026';
+  wrap.appendChild(thk2);wrap.scrollTop=9999;
+  try{
+    const data=await callChatAPI('[Query result]\n'+summary,{});
+    thk2.remove();
+    if(data.reply)appendMsg('ai',data.reply);
+    historyByMode[currentMode].push({role:'assistant',content:data.reply||''});
+    await handleActions(data.actions||(data.action?[data.action]:[]));
+  }catch(e){thk2.remove();appendMsg('ai','Error: '+e.message);}
 }
 async function sendChat(){
   const inp=document.getElementById('chat-input');
   const msg=inp.value.trim();if(!msg)return;
   inp.value='';
   appendMsg('user',msg);
-  chatHistory.push({role:'user',content:msg});
+  historyByMode[currentMode].push({role:'user',content:msg});
   const btn=document.getElementById('chat-send');
   btn.disabled=true;
   const thk=document.createElement('div');
   thk.className='chat-msg thinking';thk.textContent='Thinking\u2026';
   document.getElementById('chat-msgs').appendChild(thk);
   document.getElementById('chat-msgs').scrollTop=9999;
-  const vr=getRows();
-  const cM=calcM(vr.filter(r=>r.grp==='ctrl'));
-  const tM=calcM(vr.filter(r=>r.grp==='test'));
   try{
-    const res=await fetch('/api/tests/'+TEST_ID+'/chat',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({message:msg,history:chatHistory.slice(-20),metrics_summary:{ctrl:cM,test:tM}})
-    });
-    const data=await res.json();
+    const data=await callChatAPI(msg,null);
     removeThinking();
-    appendMsg('ai',data.reply);
-    chatHistory.push({role:'assistant',content:data.reply});
-    const actions=data.actions||(data.action?[data.action]:[]);
-    const sqlAct=actions.find(a=>a.type==='update_sql');
-    const metricAct=actions.find(a=>a.type==='add_metric');
-    if(sqlAct){
-      pendingSql=sqlAct.sql;
-      pendingMetricAfterSql=metricAct?metricAct.metric_def:null;
-      openSqlModal(sqlAct.sql);
-    }else if(metricAct){
-      pendingMetric=metricAct.metric_def;
-      openMetricModal(metricAct.metric_def);
-    }
+    if(data.reply)appendMsg('ai',data.reply);
+    historyByMode[currentMode].push({role:'assistant',content:data.reply||''});
+    await handleActions(data.actions||(data.action?[data.action]:[]));
   }catch(e){removeThinking();appendMsg('ai','Error: '+e.message);}
   finally{btn.disabled=false;}
 }
@@ -713,8 +794,7 @@ function openSqlModal(sql){
 }
 document.getElementById('sql-ok').onclick=async()=>{
   if(!pendingSql)return;
-  const sql=pendingSql;
-  const afterMetric=pendingMetricAfterSql;
+  const sql=pendingSql,afterMetric=pendingMetricAfterSql;
   pendingSql=null;pendingMetricAfterSql=null;
   document.getElementById('sql-overlay').classList.remove('open');
   try{
@@ -724,7 +804,7 @@ document.getElementById('sql-ok').onclick=async()=>{
     });
     const d=await r.json();
     if(d.ok){
-      appendMsg('ai','✅ SQL updated. Click **Refresh** on the test page to reload data with the new query.');
+      appendMsg('ai','\u2705 SQL updated. Click **Refresh** on the test page to reload data with the new query.');
       if(afterMetric){pendingMetric=afterMetric;openMetricModal(afterMetric);}
     }else{appendMsg('ai','Failed to save SQL: '+(d.error||'unknown'));}
   }catch(e){appendMsg('ai','Error: '+e.message);}
@@ -733,19 +813,37 @@ document.getElementById('sql-cancel').onclick=()=>{
   document.getElementById('sql-overlay').classList.remove('open');
   pendingSql=null;pendingMetricAfterSql=null;
 };
+// ── Remove metric ─────────────────────────────────────────────────────────────
+async function handleRemoveMetric(name,display){
+  if(!confirm('Remove metric "'+display+'" from all dashboards?'))return;
+  try{
+    const r=await fetch('/api/tests/'+TEST_ID+'/remove-metric',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:name})
+    });
+    const d=await r.json();
+    if(d.ok){appendMsg('ai','\u2705 Metric "'+display+'" removed. Reloading\u2026');setTimeout(()=>window.location.reload(),1500);}
+    else{appendMsg('ai','Failed: '+(d.error||'unknown'));}
+  }catch(e){appendMsg('ai','Error: '+e.message);}
+}
 </script>
 
 <button class="chat-fab" id="chat-fab" onclick="toggleChat()">&#128172; Ask AI</button>
 <div class="chat-panel" id="chat-panel">
   <div class="chat-phdr">
-    <span>AI Analysis Assistant</span>
+    <span>AI Assistant</span>
     <button class="chat-close" onclick="toggleChat()">&#10005;</button>
   </div>
+  <div class="chat-modes">
+    <button class="mode-btn active" data-mode="analysis" onclick="switchMode('analysis')">&#128202; Analysis</button>
+    <button class="mode-btn" data-mode="metrics" onclick="switchMode('metrics')">&#128207; Metrics</button>
+    <button class="mode-btn" data-mode="diagnostics" onclick="switchMode('diagnostics')">&#128269; Diagnostics</button>
+  </div>
   <div class="chat-msgs" id="chat-msgs">
-    <div class="chat-msg ai">Hi! I can see the current test data. Ask me anything about the results, or say "add metric" to define a new custom metric.</div>
+    <div class="chat-msg ai">Hi! I can see the current test data. Ask me anything about the results.</div>
   </div>
   <div class="chat-irow">
-    <textarea id="chat-input" rows="2" placeholder="Ask about the results… (Enter to send)"></textarea>
+    <textarea id="chat-input" rows="2" placeholder="Ask about the results&#8230; (Enter to send)"></textarea>
     <button id="chat-send" onclick="sendChat()">&#8594;</button>
   </div>
 </div>

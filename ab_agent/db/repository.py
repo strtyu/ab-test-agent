@@ -167,3 +167,6 @@ class CustomMetricRepo:
 
     def list_all(self) -> List[dict]:
         return _fetch_all(get_connection(), "SELECT * FROM custom_metrics ORDER BY created_at")
+
+    def delete(self, name: str) -> None:
+        _execute(get_connection(), "DELETE FROM custom_metrics WHERE name=%s", (name,))
