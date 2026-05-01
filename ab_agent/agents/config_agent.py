@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
@@ -26,12 +26,29 @@ _SYSTEM = """\
 3. Если чего-то существенного не хватает — задай один уточняющий вопрос: `{"type":"question","question":"..."}`.
 4. Отвечай ТОЛЬКО валидным JSON, без текста снаружи.
 
+## Дата релиза
+- Текущий год указан в начале системного сообщения. Используй его, если год в дате не указан.
+- Если дата указана с локальным временем и часовым поясом — конвертируй в UTC (например, UTC+5 → вычти 5 часов).
+- Если дата не указана вообще — оставь release_date пустым "".
+
 ## Формат orders в data
-Одна строка на ордер. Если у разных версий одной группы разные ребилы — объединяй все в одну строку:
+
+**Простой формат** (если у всех версий одной группы одинаковые ребилы):
 ```
 1: -14,-11
 2: -22,-20
 ```
+
+**Формат с версиями** (если разные версии/каналы имеют РАЗНЫЕ ребилы — обязателен):
+```
+u15.4.0: 1: -14
+u15.4.0: 2: -22,-20
+u13.0.4: 1: -11
+u13.0.4: 2: -20
+u15.4.1: 1: -14
+u15.4.1: 2: -22,-20
+```
+ВАЖНО: если у primer и solid разные ребилы для одного ордера — используй формат с версиями, не сливай в одну строку.
 
 ## КРИТИЧЕСКИ ВАЖНО: extra_filter и extra_conditions — только валидный BigQuery SQL
 
@@ -50,18 +67,17 @@ _SYSTEM = """\
 ```json
 {
   "test_name": "краткое название",
-  "release_date": "2025-05-01T00:00",
+  "release_date": "YYYY-MM-DDTHH:MM",
   "slack_channel": "#ab-results",
   "ctrl_versions": "u15.4.0 (primer), u13.0.4 (solid), u15.4.1 (paypal)",
-  "ctrl_orders": "1: -14,-11\\n2: -22,-20",
+  "ctrl_orders": "u15.4.0: 1: -14\\nu15.4.0: 2: -22,-20\\nu13.0.4: 1: -11\\nu13.0.4: 2: -20\\nu15.4.1: 1: -14\\nu15.4.1: 2: -22,-20",
   "ctrl_extra_filter": "",
   "test_versions": "u1.0.1_claude (primer), u1.0.2_claude (solid), u1.0.3_claude (paypal)",
-  "test_orders": "1: -30,-32\\n2: -31,-18",
+  "test_orders": "u1.0.1_claude: 1: -30\\nu1.0.1_claude: 2: -31,-18\\nu1.0.2_claude: 1: -32\\nu1.0.2_claude: 2: -18\\nu1.0.3_claude: 1: -30\\nu1.0.3_claude: 2: -31,-18",
   "test_extra_filter": "",
   "extra_conditions": ""
 }
 ```
-Если дата не указана — оставь release_date пустым.
 """
 
 
@@ -87,7 +103,10 @@ class ConfigAgent:
         Returns (config_dict, None) if config was generated,
         or (None, question_text) if clarification is needed.
         """
-        messages: List[Dict] = [{"role": "system", "content": _SYSTEM}]
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        system = f"Сегодня {today} UTC. Текущий год: {datetime.utcnow().year}.\n\n" + _SYSTEM
+
+        messages: List[Dict] = [{"role": "system", "content": system}]
         if history:
             messages.extend(history)
         messages.append({"role": "user", "content": description})
@@ -96,7 +115,7 @@ class ConfigAgent:
             resp = self._client.chat.completions.create(
                 model=self._model,
                 messages=messages,
-                max_tokens=800,
+                max_tokens=1000,
                 temperature=0.1,
             )
         except Exception as e:

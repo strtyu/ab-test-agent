@@ -232,28 +232,92 @@ Use the base query structure below as your template — keep ALL CTEs, SELECT co
 
 ## What you must adapt:
 1. `{{RELEASE_DATE}}` → the actual release date timestamp (format: "YYYY-MM-DD HH:MM:SS")
-2. `{{ALL_REBILL_COUNTS}}` → comma-separated list of ALL rebill_count integers from both test and control groups
-3. `{{ALL_VERSION_VALUES}}` → quoted comma-separated list of all version strings (test + control)
-4. `{{CASH_JOIN_BLOCKS}}` → one OR block per (group × order_number) combination, like:
-   -- control group, order 1
-   (
-     json_value(ups_view.event_metadata, '$.upsell_order') = '1'
-     and coalesce(
-       json_value(ups_view.event_metadata, "$.upsell_version"),
-       regexp_extract(ups_view.referrer, r'[?&]upsell_version=([^&]+)')
-     ) in ('version1', 'version2')
-     and cash.rebill_count in (-14, -22)
-   )
-   or
-   -- test group, order 1
-   (...)
-5. `{{EXTRA_WHERE_CONDITIONS}}` → any extra SQL filters from config (or empty)
+2. `{{ALL_REBILL_COUNTS}}` → comma-separated list of ALL unique rebill_count integers from both test and control groups
+3. `{{ALL_VERSION_VALUES}}` → quoted comma-separated list of all version strings without channel annotations (test + control)
+4. `{{CASH_JOIN_BLOCKS}}` → see rules below
+5. `{{EXTRA_WHERE_CONDITIONS}}` → extra SQL filters from config + channel filter when multi-channel (see below)
+
+## CASH_JOIN_BLOCKS rules
+
+### Case A — single channel (versions have NO channel annotations):
+One OR block per (group × order_number):
+```sql
+-- control group, order 1
+(
+  json_value(ups_view.event_metadata, '$.upsell_order') = '1'
+  and coalesce(
+    json_value(ups_view.event_metadata, "$.upsell_version"),
+    regexp_extract(ups_view.referrer, r'[?&]upsell_version=([^&]+)')
+  ) in ('ctrl_ver1', 'ctrl_ver2')
+  and cash.rebill_count in (-14, -22)
+)
+or
+-- test group, order 1
+(...)
+```
+
+### Case B — multiple channels (versions have annotations like "(primer)", "(solid)", "(paypal)"):
+CRITICAL: create one OR block per (channel × order_number).
+Put BOTH ctrl and test versions for the SAME channel in the SAME block.
+Use only the rebills that belong to that channel (from per-version orders if given).
+
+Channel filter SQL:
+- primer → `json_value(fun.event_metadata, '$.channel') = 'primer'`
+- solid/solidgate → `json_value(fun.event_metadata, '$.channel') = 'solidgate'`
+- paypal → `lower(json_value(fun.event_metadata, '$.payment_method')) like '%paypal-vault%'`
+
+Example multi-channel blocks:
+```sql
+    -- primer, order 1: ctrl=u15.4.0 (-14) vs test=u1.0.1_claude (-30)
+    (
+      json_value(ups_view.event_metadata, '$.upsell_order') = '1'
+      and json_value(fun.event_metadata, '$.channel') = 'primer'
+      and coalesce(
+        json_value(ups_view.event_metadata, "$.upsell_version"),
+        regexp_extract(ups_view.referrer, r'[?&]upsell_version=([^&]+)')
+      ) in ('u15.4.0', 'u1.0.1_claude')
+      and cash.rebill_count in (-14, -30)
+    )
+    or
+    -- primer, order 2: ctrl=u15.4.0 (-22,-20) vs test=u1.0.1_claude (-31,-18)
+    (
+      json_value(ups_view.event_metadata, '$.upsell_order') = '2'
+      and json_value(fun.event_metadata, '$.channel') = 'primer'
+      and coalesce(
+        json_value(ups_view.event_metadata, "$.upsell_version"),
+        regexp_extract(ups_view.referrer, r'[?&]upsell_version=([^&]+)')
+      ) in ('u15.4.0', 'u1.0.1_claude')
+      and cash.rebill_count in (-22, -20, -31, -18)
+    )
+    or
+    -- solid, order 1: ctrl=u13.0.4 (-11) vs test=u1.0.2_claude (-32)
+    (
+      json_value(ups_view.event_metadata, '$.upsell_order') = '1'
+      and json_value(fun.event_metadata, '$.channel') = 'solidgate'
+      and coalesce(...) in ('u13.0.4', 'u1.0.2_claude')
+      and cash.rebill_count in (-11, -32)
+    )
+    -- ... repeat for each channel × order
+```
+
+When orders use "version: order: rebills" format (e.g. `u15.4.0: 1: -14`), use those specific rebills for that version's channel blocks only.
+
+## EXTRA_WHERE_CONDITIONS — channel filter required for Case B
+When multiple channels are used, append this INSIDE `{{EXTRA_WHERE_CONDITIONS}}`:
+```sql
+  and (
+    json_value(fun.event_metadata, '$.channel') = 'primer'
+    or json_value(fun.event_metadata, '$.channel') = 'solidgate'
+    or lower(json_value(fun.event_metadata, '$.payment_method')) like '%paypal-vault%'
+  )
+```
+Include only channels actually present in the test. Combine with any other extra_conditions from config.
 
 ## Important rules:
 - Output ONLY valid BigQuery SQL. No markdown, no code fences, no explanations.
 - Keep the full CTE chain unchanged (upsell_purch_cash, device_to_user_mapping, path_from_metadata, path_events, user_path_cte, intercom_tickets).
 - Keep SELECT columns exactly as in the template.
-- The `upsell_version` field in the data looks like `'u15.4.0'` or `'u1.0.1_claude'` — use the exact version strings from the config without adding extra text.
+- Strip channel annotations from version strings — use `'u15.4.0'` not `'u15.4.0 (primer)'`.
 - `country_code not in ('KZ')` is always present in CTEs — keep it.
 - Do NOT add `quiz_version` or other filters unless explicitly specified in the config.
 

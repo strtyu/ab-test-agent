@@ -26,20 +26,31 @@ def _do_initial_refresh(test_id: str) -> None:
     run_refresh(test_id)
 
 def _parse_orders(text: str) -> List[OrderConfig]:
-    orders = []
+    orders_dict: dict = {}
     for line in (text or "").strip().splitlines():
         line = line.strip()
         if not line or ":" not in line:
             continue
-        num_str, rebills_str = line.split(":", 1)
+        parts = line.split(":")
+        # Per-version format: "u15.4.0: 1: -14,-11" (first segment is not a number)
+        if not parts[0].strip().lstrip("-").lstrip("+").isdigit():
+            # Strip version prefix, keep "order: rebills"
+            rest = ":".join(parts[1:]).strip()
+        else:
+            rest = line
+        if ":" not in rest:
+            continue
+        num_str, rebills_str = rest.split(":", 1)
         try:
             order_num = int(num_str.strip())
             rebill_counts = [int(x.strip()) for x in rebills_str.split(",") if x.strip()]
             if rebill_counts:
-                orders.append(OrderConfig(order_number=order_num, rebill_counts=rebill_counts))
+                if order_num not in orders_dict:
+                    orders_dict[order_num] = set()
+                orders_dict[order_num].update(rebill_counts)
         except ValueError:
             continue
-    return orders
+    return [OrderConfig(order_number=k, rebill_counts=sorted(list(v))) for k, v in sorted(orders_dict.items())]
 
 
 def _parse_versions(text: str) -> List[str]:
