@@ -77,6 +77,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
      justify-content:space-between;gap:16px;flex-wrap:wrap}
 .hdr h1{color:#fff;font-size:17px;font-weight:700;margin:0}
 .hdr p{color:#94A3B8;font-size:11px;margin-top:3px}
+.back-btn{display:inline-flex;align-items:center;gap:5px;color:#94A3B8;
+          font-size:12px;text-decoration:none;padding:5px 10px;border:1px solid #2D3F5E;
+          border-radius:6px;transition:all .12s;white-space:nowrap;flex-shrink:0}
+.back-btn:hover{color:#fff;border-color:#4A6FA5;background:rgba(255,255,255,.06)}
 .legend{display:flex;gap:18px;flex-shrink:0}
 .leg{display:flex;align-items:center;gap:6px;color:#CBD5E1;font-size:12px;white-space:nowrap}
 .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
@@ -161,6 +165,7 @@ tbody tr:last-child td{border-bottom:none}
 </head>
 <body>
 <div class="hdr">
+  <a class="back-btn" href="javascript:history.back()">&#8592; Back</a>
   <div><h1>TMPL_TEST_NAME</h1><p>Release: TMPL_RELEASE UTC</p></div>
   <div class="legend">
     <div class="leg"><div class="dot" style="background:#1664F5"></div>Control: TMPL_CTRL</div>
