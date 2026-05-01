@@ -14,7 +14,6 @@ from ab_agent.agents.filter_agent import FilterAgent
 from ab_agent.bigquery.query_builder import build_query
 from ab_agent.core.models import ABTestConfig, OrderConfig, QueryFilters, VersionGroup
 from ab_agent.db.repository import AnalysisRepo, SnapshotRepo, TestRepo
-from ab_agent.core import scheduler as _sched
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
