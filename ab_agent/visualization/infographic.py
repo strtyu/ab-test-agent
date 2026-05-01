@@ -777,10 +777,10 @@ def render_html_dashboard_string(
         .replace("TMPL_RELEASE",       config.release_date.strftime("%Y-%m-%d %H:%M"))
         .replace("TMPL_CTRL_VERSIONS", json.dumps(ctrl_versions_clean, ensure_ascii=False))
         .replace("TMPL_TEST_VERSIONS", json.dumps(test_versions_clean, ensure_ascii=False))
+        .replace("TMPL_TEST_ID",       test_id)
         .replace("TMPL_CTRL",          ctrl_short)
         .replace("TMPL_TEST",          test_short)
         .replace("TMPL_ROWS",          rows_json)
-        .replace("TMPL_TEST_ID",       test_id)
         .replace("TMPL_CUSTOM_METRICS", json.dumps(cm_js, ensure_ascii=False))
     )
 

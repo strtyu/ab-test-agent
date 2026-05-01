@@ -41,7 +41,8 @@
     <input type="hidden" name="history_json" value="{{ history_json | e }}" />
     <div style="display:flex;gap:.5rem;align-items:flex-end">
       <textarea name="answer" rows="2" placeholder="Your answer..."
-        style="flex:1;margin:0;font-size:.88rem;resize:none" required></textarea>
+        style="flex:1;margin:0;font-size:.88rem;resize:none" required
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();this.form.submit();}"></textarea>
       <button type="submit" class="btn btn-primary" style="height:fit-content;white-space:nowrap">Send ↵</button>
     </div>
   </form>
@@ -51,7 +52,8 @@
     <div style="display:flex;gap:.5rem;align-items:flex-end">
       <textarea name="description" rows="3"
         placeholder="Describe your test: versions, orders, channels, date. E.g.: u1.0.1_claude vs u15.4.0, primer channel, order 1 rebill -30, order 2 rebills -31 -18. Release May 1 2025."
-        style="flex:1;margin:0;font-size:.88rem;resize:vertical">{{ description or '' }}</textarea>
+        style="flex:1;margin:0;font-size:.88rem;resize:vertical"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();this.form.submit();}">{{ description or '' }}</textarea>
       <button type="submit" class="btn btn-primary" style="height:fit-content;white-space:nowrap">Generate ↵</button>
     </div>
   </form>
