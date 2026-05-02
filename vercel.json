@@ -10,5 +10,10 @@
       "src": "/(.*)",
       "dest": "ab_agent/main.py"
     }
-  ]
+  ],
+  "functions": {
+    "ab_agent/main.py": {
+      "maxDuration": 60
+    }
+  }
 }
