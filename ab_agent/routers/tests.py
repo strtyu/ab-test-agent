@@ -842,6 +842,7 @@ async def api_update_sql(test_id: str, request: Request):
     try:
         body = await request.json()
         sql = body.get("sql", "").strip()
+        sql = sql.encode("ascii", errors="ignore").decode("ascii")
         test = TestRepo().get(test_id)
         if not test:
             return JSONResponse({"ok": False, "error": "Test not found"})
