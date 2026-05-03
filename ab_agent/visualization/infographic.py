@@ -612,7 +612,9 @@ let chatOpen=false, pendingMetric=null, pendingSql=null, pendingMetricAfterSql=n
 let currentMode='analysis';
 const historyByMode={analysis:[],metrics:[],diagnostics:[]};
 function _chatKey(){return 'ab_chat_'+TEST_ID;}
-function saveChatHistory(){try{localStorage.setItem(_chatKey(),JSON.stringify(historyByMode));}catch(e){}}
+function saveChatHistory(){
+  try{localStorage.setItem(_chatKey(),JSON.stringify({history:historyByMode,mode:currentMode}));}catch(e){}
+}
 const MODE_GREET={
   analysis:'Hi! I can see the current test data. Ask me anything about the results.',
   metrics:'I can help manage metrics on this dashboard \u2014 add new ones or remove existing ones. What would you like to do?',
@@ -637,6 +639,7 @@ function switchMode(m){
     c.appendChild(div);
   });
   c.scrollTop=9999;
+  saveChatHistory();
 }
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function md2html(t){
@@ -840,8 +843,19 @@ async function handleRemoveMetric(name,display){
 </script>
 <script>
 (function(){
-  try{var s=localStorage.getItem('ab_chat_'+TEST_ID);if(s){var d=JSON.parse(s);Object.assign(historyByMode,d);}}catch(e){}
-  switchMode('analysis');
+  try{
+    var s=localStorage.getItem('ab_chat_'+TEST_ID);
+    if(s){
+      var d=JSON.parse(s);
+      // Support both old format {analysis:[]} and new format {history:{...},mode:'metrics'}
+      var savedHistory=d.history||d;
+      var savedMode=d.mode||'analysis';
+      Object.assign(historyByMode,savedHistory);
+      switchMode(savedMode);
+    }else{
+      switchMode('analysis');
+    }
+  }catch(e){switchMode('analysis');}
 })();
 </script>
 <button class="chat-fab" id="chat-fab" onclick="toggleChat()">&#128172; Ask AI</button>

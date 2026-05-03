@@ -21,9 +21,32 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templa
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
-def _do_initial_refresh(test_id: str) -> None:
-    from ab_agent.pipeline.refresh_pipeline import run_refresh
-    run_refresh(test_id)
+def _rerender_dashboard(test_id: str) -> None:
+    """Re-render dashboard HTML from the latest snapshot's rows_json using current DB metrics,
+    then persist the updated HTML back to the snapshot. Call this after any metric DB change."""
+    import logging
+    try:
+        from ab_agent.bigquery.query_builder import _strip_channel
+        from ab_agent.visualization.infographic import render_html_dashboard_string
+        test = TestRepo().get(test_id)
+        if not test:
+            return
+        snap = SnapshotRepo().latest(test_id)
+        if not snap:
+            return
+        rows_json = snap.get("rows_json") or ""
+        if not rows_json:
+            return
+        rows = json.loads(rows_json)
+        config = ABTestConfig.model_validate_json(test["config_json"])
+        ctrl_v = [_strip_channel(v) for v in config.control.versions]
+        test_v = [_strip_channel(v) for v in config.test.versions]
+        custom_metrics = CustomMetricRepo().list_all()
+        html = render_html_dashboard_string(rows, config, ctrl_v, test_v, test_id=test_id, custom_metrics=custom_metrics)
+        SnapshotRepo().update_dashboard_html(test_id, html)
+    except Exception:
+        logging.getLogger(__name__).exception("_rerender_dashboard failed for %s", test_id)
+
 
 def _parse_orders(text: str) -> List[OrderConfig]:
     orders_dict: dict = {}
@@ -858,6 +881,7 @@ async def api_remove_metric(test_id: str, request: Request):
                 if m_display == display and m_name not in deleted:
                     repo.delete(m_name)
                     deleted.append(m_name)
+        _rerender_dashboard(test_id)
         return JSONResponse({"ok": True, "deleted": deleted})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
@@ -894,6 +918,7 @@ async def api_add_metric(test_id: str, request: Request):
             js_expr=metric["expr"],
             is_default=as_default,
         )
+        _rerender_dashboard(test_id)
         return JSONResponse({"ok": True})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})

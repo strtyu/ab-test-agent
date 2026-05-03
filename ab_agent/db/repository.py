@@ -104,6 +104,18 @@ class SnapshotRepo:
             (test_id,),
         )
 
+    def update_dashboard_html(self, test_id: str, dashboard_html: str) -> None:
+        """Update the dashboard_html of the latest snapshot for a test."""
+        conn = get_connection()
+        _execute(conn,
+            """UPDATE snapshots SET dashboard_html=%s
+               WHERE id=(
+                 SELECT id FROM snapshots WHERE test_id=%s
+                 ORDER BY created_at DESC LIMIT 1
+               )""",
+            (dashboard_html, test_id),
+        )
+
     def list_for_test(self, test_id: str) -> List[dict]:
         return _fetch_all(get_connection(),
             "SELECT * FROM snapshots WHERE test_id=%s ORDER BY created_at DESC", (test_id,),
