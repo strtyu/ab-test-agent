@@ -796,7 +796,7 @@ async def api_test_chat(test_id: str, request: Request):
             history=body.get("history", []),
             current_sql=sql,
             mode=body.get("mode", "analysis"),
-            custom_metrics=body.get("custom_metrics", []),
+            custom_metrics=CustomMetricRepo().list_all(),
         )
         return JSONResponse(result)
     except Exception as e:

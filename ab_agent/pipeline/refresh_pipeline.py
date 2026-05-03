@@ -56,7 +56,13 @@ def _do_refresh(test_id: str) -> None:
     png_path = store.screenshot_path(snap_id, "summary")
     render_summary_png(ctrl_m, test_m, config, png_path)
 
-    dashboard_html = render_html_dashboard_string(rows, config, ctrl_versions_clean, test_versions_clean)
+    from ab_agent.db.repository import CustomMetricRepo
+    custom_metrics = CustomMetricRepo().list_all()
+    dashboard_html = render_html_dashboard_string(
+        rows, config, ctrl_versions_clean, test_versions_clean,
+        test_id=test_id,
+        custom_metrics=custom_metrics,
+    )
 
     SnapshotRepo().save(
         snapshot_id=snap_id,
