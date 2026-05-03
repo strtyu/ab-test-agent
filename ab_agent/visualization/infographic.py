@@ -415,9 +415,9 @@ function clearAll(){
 }
 
 // ── Mode / dim controls ──────────────────────────────────────────────────────
-document.querySelectorAll('.mode-btn').forEach(btn=>{
+document.querySelectorAll('.controls-bar .mode-btn').forEach(btn=>{
   btn.addEventListener('click',()=>{
-    document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.controls-bar .mode-btn').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');mode=btn.dataset.mode;render();
   });
 });
@@ -628,7 +628,7 @@ function toggleChat(){
 }
 function switchMode(m){
   currentMode=m;
-  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
+  document.querySelectorAll('.chat-modes .mode-btn').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
   const c=document.getElementById('chat-msgs');
   c.innerHTML='<div class="chat-msg ai">'+escHtml(MODE_GREET[m])+'</div>';
   historyByMode[m].forEach(function(msg){

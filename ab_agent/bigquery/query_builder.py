@@ -392,6 +392,13 @@ select
   end as unsub12h,
   case
     when ups_purch.event_id is not null
+    and unsub.event_id is not null
+    and timestamp_diff(unsub.timestamp, fun.timestamp, hour) <= 24
+    then 1
+    else 0
+  end as unsub24h,
+  case
+    when ups_purch.event_id is not null
       and unsub.event_id is not null
       and timestamp_diff(unsub.timestamp, fun.timestamp, hour) <= 12
     then unsub.timestamp

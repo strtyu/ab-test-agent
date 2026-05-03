@@ -21,6 +21,15 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templa
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
+def _sanitize_custom_sql(sql: str) -> str:
+    """Return sql only if it is a complete query; clear fragments the AI may have stored."""
+    s = sql.encode("ascii", errors="ignore").decode("ascii").strip()
+    if not s:
+        return ""
+    first = s.split()[0].upper()
+    return s if first in ("SELECT", "WITH") else ""
+
+
 def _rerender_dashboard(test_id: str) -> None:
     """Re-render dashboard HTML from the latest snapshot's rows_json using current DB metrics,
     then persist the updated HTML back to the snapshot. Call this after any metric DB change."""
@@ -692,7 +701,7 @@ async def edit_test_form(request: Request, test_id: str):
         ),
         "test_extra_filter": config.test.extra_filter or "",
         "extra_conditions": "\n".join(config.filters.extra_conditions),
-        "custom_sql": config.custom_sql or "",
+        "custom_sql": _sanitize_custom_sql(config.custom_sql or ""),
     }
     raw_history = test.get("chat_history_json") or "[]"
     chat_history = []
@@ -957,6 +966,10 @@ async def api_update_sql(test_id: str, request: Request):
         body = await request.json()
         sql = body.get("sql", "").strip()
         sql = sql.encode("ascii", errors="ignore").decode("ascii")
+        if sql:
+            first = sql.split()[0].upper() if sql.split() else ""
+            if first not in ("SELECT", "WITH"):
+                return JSONResponse({"ok": False, "error": "update_sql must be a complete query starting with SELECT or WITH — partial expressions are not accepted. Provide the full replacement query."})
         test = TestRepo().get(test_id)
         if not test:
             return JSONResponse({"ok": False, "error": "Test not found"})
