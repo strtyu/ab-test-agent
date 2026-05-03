@@ -204,7 +204,7 @@ tbody tr:last-child td{border-bottom:none}
 .chat-modes{display:flex;border-bottom:1px solid #E2E8F0}
 .chat-modes .mode-btn{flex:1;padding:7px 4px;font-size:10.5px;font-weight:600;border:none;background:none;
   cursor:pointer;color:#94A3B8;border-bottom:2px solid transparent;transition:all .15s;line-height:1.3}
-.chat-modes .mode-btn.active{color:#1664F5;border-bottom-color:#1664F5}
+.chat-modes .mode-btn.active{color:#1664F5;border-bottom-color:#1664F5;background:none;border-color:transparent}
 .chat-modes .mode-btn:hover:not(.active){color:#475569}
 .qr-wrap{overflow-x:auto;max-width:100%;margin-top:2px}
 .qr-table{border-collapse:collapse;font-size:10.5px;min-width:100%}

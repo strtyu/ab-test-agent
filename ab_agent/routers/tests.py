@@ -80,7 +80,7 @@ def _rerender_dashboard(test_id: str) -> None:
         config = ABTestConfig.model_validate_json(test["config_json"])
         ctrl_v = [_strip_channel(v) for v in config.control.versions]
         test_v = [_strip_channel(v) for v in config.test.versions]
-        custom_metrics = CustomMetricRepo().list_all()
+        custom_metrics = CustomMetricRepo().list_for_test(test_id)
         html = render_html_dashboard_string(rows, config, ctrl_v, test_v, test_id=test_id, custom_metrics=custom_metrics)
         SnapshotRepo().update_dashboard_html(test_id, html)
     except Exception:
@@ -829,7 +829,7 @@ async def test_dashboard(test_id: str):
             if config:
                 ctrl_v = [_strip_channel(v) for v in config.control.versions]
                 test_v = [_strip_channel(v) for v in config.test.versions]
-                custom_metrics = CustomMetricRepo().list_all()
+                custom_metrics = CustomMetricRepo().list_for_test(test_id)
                 html = render_html_dashboard_string(
                     rows, config, ctrl_v, test_v,
                     test_id=test_id,
@@ -925,7 +925,7 @@ async def api_test_chat(test_id: str, request: Request):
         # Merge DB metrics with client-observed metrics (CUSTOM_M_DEFS from the dashboard JS).
         # The DB is authoritative; client fills in metrics that appear in the rendered HTML
         # but may have been deleted from the DB (orphaned after a clear or race condition).
-        db_custom = CustomMetricRepo().list_all()
+        db_custom = CustomMetricRepo().list_for_test(test_id)
         db_names = {cm.get("name", "") for cm in db_custom}
         merged_custom = list(db_custom)
         for bm in body.get("custom_metrics", []):
@@ -1065,6 +1065,7 @@ async def api_add_metric(test_id: str, request: Request):
             metric_type=metric.get("type", "rel"),
             js_expr=metric["expr"],
             is_default=as_default,
+            test_id=None if as_default else test_id,
         )
         _rerender_dashboard(test_id)
         return JSONResponse({"ok": True})

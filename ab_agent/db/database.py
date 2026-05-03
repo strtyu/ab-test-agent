@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
 
 ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS rows_json TEXT;
 
+ALTER TABLE custom_metrics ADD COLUMN IF NOT EXISTS test_id TEXT;
+
 CREATE TABLE IF NOT EXISTS custom_metrics (
     name TEXT PRIMARY KEY,
     display_name TEXT NOT NULL,
