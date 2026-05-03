@@ -797,7 +797,10 @@ async function confirmAddMetric(){
     });
     const d=await r.json();
     if(d.ok){
-      appendMsg('ai','\u2705 Metric "'+pendingMetric.display+'" added! Reloading\u2026');
+      const succMsg='\u2705 Metric "'+pendingMetric.display+'" added!';
+      historyByMode[currentMode].push({role:'assistant',content:succMsg});
+      saveChatHistory();
+      appendMsg('ai',succMsg+' Reloading\u2026');
       setTimeout(()=>window.location.reload(),1500);
     }else{appendMsg('ai','Failed: '+(d.error||'unknown'));}
   }catch(e){appendMsg('ai','Error: '+e.message);}
@@ -869,7 +872,10 @@ async function handleRemoveMetric(name,display){
     });
     const d=await r.json();
     if(d.ok){
-      appendMsg('ai','\u2705 Metric "'+display+'" removed. Updating dashboard\u2026');
+      const rmMsg='\u2705 Metric "'+display+'" removed.';
+      historyByMode[currentMode].push({role:'assistant',content:rmMsg});
+      saveChatHistory();
+      appendMsg('ai',rmMsg+' Updating dashboard\u2026');
       // Trigger server-side re-render so the column disappears immediately on reload
       await fetch('/api/tests/'+TEST_ID+'/rerender-dashboard',{method:'POST'});
       setTimeout(()=>window.location.reload(),800);

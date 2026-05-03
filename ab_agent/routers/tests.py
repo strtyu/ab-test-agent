@@ -877,12 +877,12 @@ async def api_test_chat(test_id: str, request: Request):
         from ab_agent.agents.dashboard_chat import DashboardChatAgent
         from ab_agent.bigquery.query_builder import build_query
         config = ABTestConfig.model_validate_json(test["config_json"])
-        sql = config.custom_sql or ""
-        if not sql:
-            try:
-                sql = build_query(config)
-            except Exception:
-                sql = ""
+        # Always use build_query — it validates custom_sql (rejects fragments)
+        # so the AI always sees correct SQL, not a broken fragment.
+        try:
+            sql = build_query(config)
+        except Exception:
+            sql = ""
 
         # Merge DB metrics with client-observed metrics (CUSTOM_M_DEFS from the dashboard JS).
         # The DB is authoritative; client fills in metrics that appear in the rendered HTML
