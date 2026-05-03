@@ -51,13 +51,23 @@ When the user wants to add a new custom metric:
 {"name":"snake_key","display":"Human Name","format":"pct|int|money|f1|f4","hi":true,"type":"abs|rel","expr":"m.revenue>0?m.purch_n/m.revenue:null"}
 </add_metric>
 
-3b. If the metric REQUIRES new data not in the current query, you MUST:
-   - Output a full replacement SQL query in <update_sql>...</update_sql>
-   - Then output the <add_metric> block using the new columns
-   - New columns you add must follow the naming convention: `col_name` (lowercase, no spaces)
-   - In the JS expression, new columns are available as:
-       m.{col_name}_u   — count of unique users where col_name > 0
-       m.{col_name}_sum — total sum of col_name across users
+3b. If the metric REQUIRES new data not in the current query, output ONLY the new SELECT field expression
+   (do NOT copy the full query — just the field):
+<add_sql_field>
+case
+  when col.event_id is not null
+    and timestamp_diff(col.timestamp, fun.timestamp, hour) <= 24
+  then 1 else 0
+end as my_field_name
+</add_sql_field>
+   Then immediately output the <add_metric> block. The server will auto-inject the field into the full SQL.
+   - Field name must be lowercase snake_case, no spaces
+   - Write SQL in ASCII only — no Cyrillic or non-ASCII characters
+   - In the JS expression, the new column is available as:
+       m.{field_name}_u   — count of unique users where field_name > 0
+       m.{field_name}_sum — total sum of field_name across users
+   - NEVER use <update_sql> just to add a field. Only use <update_sql> if the user explicitly
+     asks to replace the entire query from scratch.
 
 Rules for <add_metric> expr:
 - `m` is the calcM() result — use m.view_u, m.purch_u etc.
@@ -65,7 +75,6 @@ Rules for <add_metric> expr:
 - type: abs = absolute count/amount, rel = rate/ratio
 - format: pct=0.1234→"12.34%", int=integer, money=$xx.xx, f1=one decimal, f4=four decimals
 - hi: true if higher value is better for the test
-- IMPORTANT: All SQL must use ASCII characters only — write comments in English, no Cyrillic
 """
 
 _SYSTEM_METRICS = """\
@@ -77,12 +86,17 @@ Before asking the user ANY questions about data sources, table names, or SQL pat
 If the user asks for a metric that is similar to an existing one in the SQL (e.g. "unsub 24h" when SQL already has unsub12h logic),
 derive the new version by analogy. Do NOT ask what table to use or how to compute it — you already have the answer in the SQL.
 
-To ADD a metric, follow the same rules as in analysis mode:
-- Discuss what the metric measures and how to compute it
-- Use existing per-user values if possible (view_u, ttp_u, purch_u, revenue, purch_n,
-  unsub_u, tick_u, med_ttp, ttp_r, close_r, cvr, ppv, unsub_r, tick_r)
-- If new data is needed, output <update_sql>...</update_sql> + <add_metric>...</add_metric>
-- If computable from existing values, output just <add_metric>...</add_metric>
+To ADD a metric:
+- Check if it can be computed from existing values:
+  view_u, ttp_u, purch_u, revenue, purch_n, unsub_u, tick_u, med_ttp,
+  ttp_r, close_r, cvr, ppv, unsub_r, tick_r
+- If YES → output just <add_metric>...</add_metric>
+- If NO, new SQL data needed → output <add_sql_field>...</add_sql_field> THEN <add_metric>...</add_metric>
+
+READ THE CURRENT SQL first — if a similar field already exists (e.g. unsub12h), derive the new one by analogy.
+NEVER ask what table to use — the answer is in the SQL.
+NEVER use <update_sql> just to add one field.
+
 <add_metric>
 {"name":"snake_key","display":"Human Name","format":"pct|int|money|f1|f4","hi":true,"type":"abs|rel","expr":"..."}
 </add_metric>
@@ -175,6 +189,7 @@ class DashboardChatAgent:
         actions = self._parse_actions(raw)
         reply = re.sub(r"<add_metric>.*?</add_metric>", "", raw, flags=re.DOTALL)
         reply = re.sub(r"<update_sql>.*?</update_sql>", "", reply, flags=re.DOTALL)
+        reply = re.sub(r"<add_sql_field>.*?</add_sql_field>", "", reply, flags=re.DOTALL)
         reply = re.sub(r"<run_query>.*?</run_query>", "", reply, flags=re.DOTALL)
         reply = re.sub(r"<remove_metric>.*?</remove_metric>", "", reply, flags=re.DOTALL).strip()
         return {"reply": reply, "actions": actions}
@@ -290,6 +305,10 @@ class DashboardChatAgent:
         sql_m = re.search(r"<update_sql>(.*?)</update_sql>", raw, re.DOTALL)
         if sql_m:
             actions.append({"type": "update_sql", "sql": sql_m.group(1).strip()})
+
+        field_m = re.search(r"<add_sql_field>(.*?)</add_sql_field>", raw, re.DOTALL)
+        if field_m:
+            actions.append({"type": "add_sql_field", "field_expr": field_m.group(1).strip()})
 
         metric_m = re.search(r"<add_metric>(.*?)</add_metric>", raw, re.DOTALL)
         if metric_m:

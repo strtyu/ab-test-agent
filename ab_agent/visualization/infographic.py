@@ -609,6 +609,7 @@ render();
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
 let chatOpen=false, pendingMetric=null, pendingSql=null, pendingMetricAfterSql=null;
+let pendingFieldExpr=null, pendingMetricAfterField=null;
 let currentMode='analysis';
 const historyByMode={analysis:[],metrics:[],diagnostics:[]};
 function _chatKey(){return 'ab_chat_'+TEST_ID;}
@@ -704,9 +705,14 @@ async function callChatAPI(message,metricsOverride){
 }
 async function handleActions(actions){
   const sqlAct=actions.find(a=>a.type==='update_sql');
+  const fieldAct=actions.find(a=>a.type==='add_sql_field');
   const metricAct=actions.find(a=>a.type==='add_metric');
   const queryAct=actions.find(a=>a.type==='run_query');
-  if(sqlAct){
+  if(fieldAct){
+    pendingFieldExpr=fieldAct.field_expr;
+    pendingMetricAfterField=metricAct?metricAct.metric_def:null;
+    openFieldModal(fieldAct.field_expr);
+  }else if(sqlAct){
     pendingSql=sqlAct.sql;
     pendingMetricAfterSql=metricAct?metricAct.metric_def:null;
     openSqlModal(sqlAct.sql);
@@ -800,6 +806,32 @@ async function confirmAddMetric(){
 function cancelAddMetric(){
   document.getElementById('mm-overlay').classList.remove('open');
   pendingMetric=null;
+}
+// ── Add SQL field modal ───────────────────────────────────────────────────────
+function openFieldModal(expr){
+  document.getElementById('field-preview').textContent=expr;
+  document.getElementById('field-overlay').classList.add('open');
+}
+async function confirmAddField(){
+  if(!pendingFieldExpr)return;
+  const expr=pendingFieldExpr,afterMetric=pendingMetricAfterField;
+  pendingFieldExpr=null;pendingMetricAfterField=null;
+  document.getElementById('field-overlay').classList.remove('open');
+  try{
+    const r=await fetch('/api/tests/'+TEST_ID+'/inject-sql-field',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({field_expr:expr})
+    });
+    const d=await r.json();
+    if(d.ok){
+      appendMsg('ai','✅ SQL field added. Click **Refresh Now** on the test page to pull fresh data with this field.');
+      if(afterMetric){pendingMetric=afterMetric;openMetricModal(afterMetric);}
+    }else{appendMsg('ai','Failed: '+(d.error||'unknown'));}
+  }catch(e){appendMsg('ai','Error: '+e.message);}
+}
+function cancelAddField(){
+  document.getElementById('field-overlay').classList.remove('open');
+  pendingFieldExpr=null;pendingMetricAfterField=null;
 }
 // ── Update SQL modal ──────────────────────────────────────────────────────────
 function openSqlModal(sql){
@@ -895,6 +927,17 @@ async function handleRemoveMetric(name,display){
     <div class="mm-btns">
       <button class="mm-ok" onclick="confirmAddMetric()">Add metric</button>
       <button class="mm-cancel" onclick="cancelAddMetric()">Cancel</button>
+    </div>
+  </div>
+</div>
+<div class="mm-overlay" id="field-overlay">
+  <div class="mm-box" style="max-width:520px">
+    <h3>Add SQL Field</h3>
+    <p style="font-size:12px;color:#64748B;margin-bottom:8px">The AI wants to add this field to the SELECT clause. After confirming, click <strong>Refresh Now</strong> on the test page to reload data.</p>
+    <div class="mm-row mm-code" id="field-preview" style="max-height:200px;overflow-y:auto;font-size:11px;white-space:pre-wrap;word-break:break-all"></div>
+    <div class="mm-btns">
+      <button class="mm-ok" onclick="confirmAddField()">Add Field</button>
+      <button class="mm-cancel" onclick="cancelAddField()">Cancel</button>
     </div>
   </div>
 </div>

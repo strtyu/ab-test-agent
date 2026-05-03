@@ -21,6 +21,17 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templa
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
+def _inject_sql_field(base_sql: str, field_expr: str) -> str:
+    """Inject a SELECT field expression into base_sql just before the top-level FROM clause."""
+    import re as _re
+    expr = field_expr.strip().rstrip(",")
+    m = _re.search(r'\n(from\s+`)', base_sql, _re.IGNORECASE)
+    if m:
+        pos = m.start()
+        return base_sql[:pos] + f",\n  {expr}" + base_sql[pos:]
+    return base_sql
+
+
 def _sanitize_custom_sql(sql: str) -> str:
     """Return sql only if it is a complete query; clear fragments the AI may have stored."""
     s = sql.encode("ascii", errors="ignore").decode("ascii").strip()
@@ -959,6 +970,27 @@ async def api_remove_metric(test_id: str, request: Request):
         return JSONResponse({"ok": True, "deleted": deleted})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
+
+@router.post("/api/tests/{test_id}/inject-sql-field")
+async def api_inject_sql_field(test_id: str, request: Request):
+    try:
+        body = await request.json()
+        field_expr = body.get("field_expr", "").strip()
+        field_expr = field_expr.encode("ascii", errors="ignore").decode("ascii")
+        if not field_expr:
+            return JSONResponse({"ok": False, "error": "No field expression provided"})
+        test = TestRepo().get(test_id)
+        if not test:
+            return JSONResponse({"ok": False, "error": "Test not found"})
+        config = ABTestConfig.model_validate_json(test["config_json"])
+        base_sql = build_query(config)
+        new_sql = _inject_sql_field(base_sql, field_expr)
+        config_updated = config.model_copy(update={"custom_sql": new_sql})
+        TestRepo().update_config(test_id, config_updated.model_dump_json())
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
+
 
 @router.post("/api/tests/{test_id}/update-sql")
 async def api_update_sql(test_id: str, request: Request):
