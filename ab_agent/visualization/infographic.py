@@ -856,6 +856,8 @@ async function handleRemoveMetric(name,display){
       var savedMode=d.mode||'analysis';
       Object.assign(historyByMode,savedHistory);
       switchMode(savedMode);
+      var hasHistory=Object.values(savedHistory).some(function(arr){return Array.isArray(arr)&&arr.length>0;});
+      if(hasHistory){toggleChat();}
     }else{
       switchMode('analysis');
     }

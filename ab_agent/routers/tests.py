@@ -847,6 +847,7 @@ async def rerender_dashboard(test_id: str):
 
 
 
+@router.post("/api/tests/{test_id}/chat")
 async def api_test_chat(test_id: str, request: Request):
     test = TestRepo().get(test_id)
     if not test:
@@ -862,6 +863,25 @@ async def api_test_chat(test_id: str, request: Request):
                 sql = build_query(config)
             except Exception:
                 sql = ""
+
+        # Merge DB metrics with client-observed metrics (CUSTOM_M_DEFS from the dashboard JS).
+        # The DB is authoritative; client fills in metrics that appear in the rendered HTML
+        # but may have been deleted from the DB (orphaned after a clear or race condition).
+        db_custom = CustomMetricRepo().list_all()
+        db_names = {cm.get("name", "") for cm in db_custom}
+        merged_custom = list(db_custom)
+        for bm in body.get("custom_metrics", []):
+            k = bm.get("k") or bm.get("name") or ""
+            if k and k not in db_names:
+                merged_custom.append({
+                    "name": k,
+                    "display_name": bm.get("l") or bm.get("display_name") or k,
+                    "js_expr": bm.get("expr", ""),
+                    "format": bm.get("f", "f4"),
+                    "higher_is_better": bool(bm.get("hi", True)),
+                    "metric_type": bm.get("type", "rel"),
+                })
+
         result = DashboardChatAgent().chat(
             message=body.get("message", ""),
             test_config=config,
@@ -869,7 +889,7 @@ async def api_test_chat(test_id: str, request: Request):
             history=body.get("history", []),
             current_sql=sql,
             mode=body.get("mode", "analysis"),
-            custom_metrics=CustomMetricRepo().list_all(),
+            custom_metrics=merged_custom,
         )
         return JSONResponse(result)
     except Exception as e:
