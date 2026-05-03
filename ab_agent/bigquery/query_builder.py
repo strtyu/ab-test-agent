@@ -215,6 +215,8 @@ def _build_channel_where_filter(config: ABTestConfig) -> str:
 
 def _extra_where(config: ABTestConfig) -> str:
     lines = []
+    if config.filters.exclude_countries:
+        lines.append(f"  and fun.country_code not in ({_str_csv(config.filters.exclude_countries)})")
     if config.filters.exclude_ips:
         lines.append(f"  and ups_view.ip not in ({_str_csv(config.filters.exclude_ips)})")
     for cond in config.filters.extra_conditions:
