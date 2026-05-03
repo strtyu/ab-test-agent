@@ -26,7 +26,8 @@
       <label>Описание теста</label>
       <textarea name="description" rows="5"
         placeholder="Например: тестирую версию u15.5.1 против u15.4.0 для первого ордера, все ребилы (-1, -2, -3). Дата релиза 1 мая 2025. Только канал solidgate."
-        style="font-size:.9rem" required></textarea>
+        style="font-size:.9rem" required
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();this.form.submit();}"></textarea>
     </div>
     <div class="actions">
       <button type="submit" class="btn btn-primary">🤖 Сгенерировать конфиг</button>
@@ -48,7 +49,8 @@
     <input type="hidden" name="history_json" value="{{ history_json | e }}" />
     <div class="form-group">
       <label>Твой ответ</label>
-      <textarea name="answer" rows="3" placeholder="Ответь на вопрос выше..." required></textarea>
+      <textarea name="answer" rows="3" placeholder="Ответь на вопрос выше..." required
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();this.form.submit();}"></textarea>
     </div>
     <div class="actions">
       <button type="submit" class="btn btn-primary">Продолжить</button>

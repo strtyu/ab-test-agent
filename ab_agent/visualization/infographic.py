@@ -202,10 +202,10 @@ tbody tr:last-child td{border-bottom:none}
 #chat-send:hover{background:#1255D6}
 #chat-send:disabled{background:#CBD5E1;cursor:default}
 .chat-modes{display:flex;border-bottom:1px solid #E2E8F0}
-.mode-btn{flex:1;padding:7px 4px;font-size:10.5px;font-weight:600;border:none;background:none;
+.chat-modes .mode-btn{flex:1;padding:7px 4px;font-size:10.5px;font-weight:600;border:none;background:none;
   cursor:pointer;color:#94A3B8;border-bottom:2px solid transparent;transition:all .15s;line-height:1.3}
-.mode-btn.active{color:#1664F5;border-bottom-color:#1664F5}
-.mode-btn:hover:not(.active){color:#475569}
+.chat-modes .mode-btn.active{color:#1664F5;border-bottom-color:#1664F5}
+.chat-modes .mode-btn:hover:not(.active){color:#475569}
 .qr-wrap{overflow-x:auto;max-width:100%;margin-top:2px}
 .qr-table{border-collapse:collapse;font-size:10.5px;min-width:100%}
 .qr-table th{background:#E2E8F0;padding:4px 7px;text-align:left;white-space:nowrap;font-weight:700;color:#334155}
@@ -743,14 +743,13 @@ async function runDiagnosticQuery(sql){
     ?('Query returned '+result.rows.length+' row(s). Columns: '+result.columns.join(', ')+'.\n'
       +result.rows.slice(0,8).map(r=>r.join(' | ')).join('\n'))
     :('Query error: '+result.error);
-  historyByMode[currentMode].push({role:'user',content:'[Query result]\n'+summary});
-  saveChatHistory();
   const thk2=document.createElement('div');
   thk2.className='chat-msg thinking';thk2.textContent='Analyzing\u2026';
   wrap.appendChild(thk2);wrap.scrollTop=9999;
   try{
     const data=await callChatAPI('[Query result]\n'+summary,{});
     thk2.remove();
+    historyByMode[currentMode].push({role:'user',content:'[Query result]\n'+summary});
     if(data.reply)appendMsg('ai',data.reply);
     historyByMode[currentMode].push({role:'assistant',content:data.reply||''});
     saveChatHistory();
