@@ -703,7 +703,6 @@ async function handleActions(actions){
   const sqlAct=actions.find(a=>a.type==='update_sql');
   const metricAct=actions.find(a=>a.type==='add_metric');
   const queryAct=actions.find(a=>a.type==='run_query');
-  const removeAct=actions.find(a=>a.type==='remove_metric');
   if(sqlAct){
     pendingSql=sqlAct.sql;
     pendingMetricAfterSql=metricAct?metricAct.metric_def:null;
@@ -712,7 +711,8 @@ async function handleActions(actions){
     pendingMetric=metricAct.metric_def;
     openMetricModal(metricAct.metric_def);
   }
-  if(removeAct) await handleRemoveMetric(removeAct.name,removeAct.display||removeAct.name);
+  const removeActs=actions.filter(a=>a.type==='remove_metric');
+  for(const ra of removeActs) await handleRemoveMetric(ra.name,ra.display||ra.name);
   if(queryAct) await runDiagnosticQuery(queryAct.sql);
 }
 async function runDiagnosticQuery(sql){
@@ -830,7 +830,7 @@ async function handleRemoveMetric(name,display){
   try{
     const r=await fetch('/api/tests/'+TEST_ID+'/remove-metric',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name:name})
+      body:JSON.stringify({name:name,display:display})
     });
     const d=await r.json();
     if(d.ok){appendMsg('ai','\u2705 Metric "'+display+'" removed. Reloading\u2026');setTimeout(()=>window.location.reload(),1500);}
@@ -843,7 +843,8 @@ async function handleRemoveMetric(name,display){
   try{var s=localStorage.getItem('ab_chat_'+TEST_ID);if(s){var d=JSON.parse(s);Object.assign(historyByMode,d);}}catch(e){}
   switchMode('analysis');
 })();
-</script> id="chat-fab" onclick="toggleChat()">&#128172; Ask AI</button>
+</script>
+<button class="chat-fab" id="chat-fab" onclick="toggleChat()">&#128172; Ask AI</button>
 <div class="chat-panel" id="chat-panel">
   <div class="chat-phdr">
     <span>AI Assistant</span>

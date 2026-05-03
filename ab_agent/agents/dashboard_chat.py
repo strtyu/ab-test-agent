@@ -302,8 +302,7 @@ class DashboardChatAgent:
         if query_m:
             actions.append({"type": "run_query", "sql": query_m.group(1).strip()})
 
-        remove_m = re.search(r"<remove_metric>(.*?)</remove_metric>", raw, re.DOTALL)
-        if remove_m:
+        for remove_m in re.finditer(r"<remove_metric>(.*?)</remove_metric>", raw, re.DOTALL):
             try:
                 d = json.loads(remove_m.group(1).strip())
                 if "name" in d:

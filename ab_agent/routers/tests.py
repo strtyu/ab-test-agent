@@ -841,10 +841,24 @@ async def api_remove_metric(test_id: str, request: Request):
     try:
         body = await request.json()
         name = body.get("name", "").strip()
-        if not name:
+        display = body.get("display", "").strip()
+        if not name and not display:
             return JSONResponse({"ok": False, "error": "No metric name provided"})
-        CustomMetricRepo().delete(name)
-        return JSONResponse({"ok": True})
+        repo = CustomMetricRepo()
+        deleted = []
+        # Delete by exact name
+        if name:
+            repo.delete(name)
+            deleted.append(name)
+        # Also delete any metrics sharing the same display_name (removes duplicates)
+        if display:
+            for m in repo.list_all():
+                m_name = m.get("name") or ""
+                m_display = m.get("display_name") or ""
+                if m_display == display and m_name not in deleted:
+                    repo.delete(m_name)
+                    deleted.append(m_name)
+        return JSONResponse({"ok": True, "deleted": deleted})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
 
@@ -915,6 +929,35 @@ async def admin_clear_all_metrics():
             cur.execute("DELETE FROM custom_metrics")
         conn.commit()
         return JSONResponse({"ok": True, "message": "All custom metrics deleted"})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
+
+
+@router.post("/api/admin/fix-sql")
+async def admin_fix_bad_sql():
+    """Admin endpoint: clear custom_sql for any test where it contains non-ASCII (Cyrillic) text
+    or doesn't start with a valid SQL keyword (SELECT/WITH).
+    Safe to call at any time — only clears invalid SQL, leaves valid SQL untouched."""
+    try:
+        import json as _json
+        repo = TestRepo()
+        tests = repo.list_all()
+        fixed = []
+        for t in tests:
+            try:
+                cfg = _json.loads(t["config_json"])
+                sql = cfg.get("custom_sql") or ""
+                if not sql:
+                    continue
+                stripped = sql.encode("ascii", errors="ignore").decode("ascii").strip()
+                first_word = stripped.split()[0].upper() if stripped.split() else ""
+                if first_word not in ("SELECT", "WITH"):
+                    cfg["custom_sql"] = None
+                    repo.update_config(t["id"], _json.dumps(cfg))
+                    fixed.append(t["id"])
+            except Exception as inner:
+                fixed.append(f"{t['id']} (error: {inner})")
+        return JSONResponse({"ok": True, "fixed_tests": fixed})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
 

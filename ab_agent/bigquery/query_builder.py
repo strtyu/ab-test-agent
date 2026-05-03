@@ -228,7 +228,13 @@ def _extra_where(config: ABTestConfig) -> str:
 
 def build_query(config: ABTestConfig, end_date=None) -> str:
     if config.custom_sql:
-        return config.custom_sql.encode("ascii", errors="ignore").decode("ascii")
+        stripped = config.custom_sql.encode("ascii", errors="ignore").decode("ascii").strip()
+        # Validate it looks like actual SQL — if it starts with SELECT or WITH, use it.
+        # Otherwise (e.g. LLM stored explanatory text as SQL), fall through to generated query.
+        first_word = stripped.split()[0].upper() if stripped.split() else ""
+        if first_word in ("SELECT", "WITH"):
+            return stripped
+        # Bad custom_sql — ignore it and generate fresh
     ts = _fmt_ts(config.release_date)
     ts_end = _fmt_ts(end_date) if end_date else _fmt_ts(config.end_date) if config.end_date else None
 
