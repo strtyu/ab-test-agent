@@ -55,12 +55,13 @@ class BQClient:
         return self._cache_dir / f"{key}.parquet"
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
-    def execute(self, sql: str, use_cache: bool = True) -> pd.DataFrame:
+    def execute(self, sql: str, use_cache: bool = True, timeout: int = 55) -> pd.DataFrame:
         cache_path = self._cache_path(sql)
         if use_cache and cache_path.exists():
             return pd.read_parquet(cache_path)
         try:
-            rows = self._client.query(sql).result()
+            job = self._client.query(sql)
+            rows = job.result(timeout=timeout)
             df = pd.DataFrame([dict(row) for row in rows])
         except Exception as e:
             raise BQQueryError(f"BigQuery query failed: {e}") from e

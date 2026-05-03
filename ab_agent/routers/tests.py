@@ -817,15 +817,21 @@ async def api_run_diagnostic(test_id: str, request: Request):
         if "limit" not in sql.lower():
             sql = sql + "\nLIMIT 500"
         from ab_agent.bigquery.client import BQClient
-        df = BQClient().execute(sql, use_cache=False)
+        df = BQClient().execute(sql, use_cache=False, timeout=25)
         columns = list(df.columns)
         rows = [[str(v) if v is not None else None for v in row] for row in df.itertuples(index=False, name=None)]
         rows = rows[:500]
         return JSONResponse({"ok": True, "columns": columns, "rows": rows})
     except Exception as e:
-        # Unwrap RetryError/BQQueryError to expose the real BQ message
+        # Unwrap tenacity RetryError → last BQQueryError → original BQ message
         cause = e
-        while hasattr(cause, '__cause__') and cause.__cause__ is not None:
+        try:
+            from tenacity import RetryError as _RetryError
+            if isinstance(cause, _RetryError):
+                cause = cause.last_attempt.exception() or cause
+        except Exception:
+            pass
+        while getattr(cause, '__cause__', None) is not None:
             cause = cause.__cause__
         return JSONResponse({"ok": False, "error": str(cause)})
 

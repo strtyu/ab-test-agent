@@ -241,6 +241,13 @@ class DashboardChatAgent:
             lines.append("\nNo custom metrics defined yet.")
 
         if current_sql:
+            # Extract full table names from backtick expressions for the AI
+            table_names = re.findall(r'`([^`]+)`', current_sql)
+            unique_tables = list(dict.fromkeys(t for t in table_names if '.' in t))
+            if unique_tables and mode == "diagnostics":
+                lines.append("\nFull table names (use these EXACTLY in diagnostic queries):")
+                for t in unique_tables:
+                    lines.append(f"  `{t}`")
             sql_preview = current_sql[:6000] + ("\n-- [truncated]" if len(current_sql) > 6000 else "")
             lines.append(f"\n--- Current SQL query ---\n{sql_preview}")
 
