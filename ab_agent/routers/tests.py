@@ -877,6 +877,10 @@ async def api_test_chat(test_id: str, request: Request):
         from ab_agent.agents.dashboard_chat import DashboardChatAgent
         from ab_agent.bigquery.query_builder import build_query
         config = ABTestConfig.model_validate_json(test["config_json"])
+        # Auto-clear broken custom_sql fragments from DB so they don't persist.
+        if config.custom_sql and not _sanitize_custom_sql(config.custom_sql):
+            config = config.model_copy(update={"custom_sql": ""})
+            TestRepo().update_config(test_id, config.model_dump_json())
         # Always use build_query — it validates custom_sql (rejects fragments)
         # so the AI always sees correct SQL, not a broken fragment.
         try:
