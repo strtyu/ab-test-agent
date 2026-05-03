@@ -236,7 +236,14 @@ class DashboardChatAgent:
         if mode == "metrics" and custom_metrics:
             lines.append("\nCurrent custom metrics on this dashboard:")
             for cm in custom_metrics:
-                lines.append(f"  {cm.get('name')} — {cm.get('display_name')} (expr: {cm.get('js_expr')})")
+                # Handle both DB format {name, display_name, js_expr} and JS format {k, l, expr}
+                name = cm.get('name') or cm.get('k') or ''
+                disp = cm.get('display_name') or cm.get('l') or name
+                expr = cm.get('js_expr') or cm.get('expr') or ''
+                if name:
+                    lines.append(f"  name={name!r}  display={disp!r}  expr={expr}")
+            if not any(cm.get('name') or cm.get('k') for cm in custom_metrics):
+                lines.append("  (no named metrics found)")
         elif mode == "metrics":
             lines.append("\nNo custom metrics defined yet.")
 

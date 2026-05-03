@@ -883,3 +883,38 @@ async def api_add_metric(test_id: str, request: Request):
         return JSONResponse({"ok": True})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
+
+
+@router.get("/api/admin/custom-metrics")
+async def admin_list_metrics():
+    """Debug endpoint: list all custom metrics in the DB."""
+    try:
+        metrics = CustomMetricRepo().list_all()
+        return JSONResponse({"ok": True, "metrics": metrics})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
+
+
+@router.delete("/api/admin/custom-metrics/{name}")
+async def admin_delete_metric(name: str):
+    """Debug endpoint: delete a metric by exact DB name."""
+    try:
+        CustomMetricRepo().delete(name)
+        return JSONResponse({"ok": True, "deleted": name})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
+
+
+@router.post("/api/admin/custom-metrics/clear")
+async def admin_clear_all_metrics():
+    """Debug endpoint: delete ALL custom metrics."""
+    try:
+        from ab_agent.db.database import get_connection
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM custom_metrics")
+        conn.commit()
+        return JSONResponse({"ok": True, "message": "All custom metrics deleted"})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
+
