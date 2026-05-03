@@ -822,7 +822,11 @@ async def api_run_diagnostic(test_id: str, request: Request):
         rows = rows[:500]
         return JSONResponse({"ok": True, "columns": columns, "rows": rows})
     except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)})
+        # Unwrap RetryError/BQQueryError to expose the real BQ message
+        cause = e
+        while hasattr(cause, '__cause__') and cause.__cause__ is not None:
+            cause = cause.__cause__
+        return JSONResponse({"ok": False, "error": str(cause)})
 
 
 @router.post("/api/tests/{test_id}/remove-metric")
