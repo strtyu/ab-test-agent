@@ -806,7 +806,8 @@ async def test_dashboard(test_id: str):
                     test_id=test_id,
                     custom_metrics=custom_metrics,
                 )
-                return HTMLResponse(content=html)
+                _headers = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+                return HTMLResponse(content=html, headers=_headers)
         except Exception as _dash_err:
             import logging as _logging
             _logging.getLogger(__name__).error("Dashboard render from rows_json failed: %s", _dash_err)
@@ -820,7 +821,11 @@ async def test_dashboard(test_id: str):
             f'.then(()=>setTimeout(()=>location.reload(),2500));'
             f'</script>'
         )
-        return HTMLResponse(content=stored.replace("</body>", inject + "</body>", 1) if "</body>" in stored else stored + inject)
+        _nc = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+        return HTMLResponse(
+            content=stored.replace("</body>", inject + "</body>", 1) if "</body>" in stored else stored + inject,
+            headers=_nc,
+        )
     return HTMLResponse("<h2>No dashboard available yet. Try refreshing.</h2>", status_code=404)
 
 
@@ -1060,10 +1065,18 @@ async def admin_delete_metric(name: str):
 
 @router.post("/api/admin/custom-metrics/clear")
 async def admin_clear_all_metrics():
-    """Debug endpoint: delete ALL custom metrics."""
+    """Debug endpoint: delete ALL custom metrics and rerender all test dashboards."""
     try:
         CustomMetricRepo().clear_all()
-        return JSONResponse({"ok": True, "message": "All custom metrics deleted"})
+        tests = TestRepo().list_all()
+        rerendered = []
+        for t in tests:
+            try:
+                _rerender_dashboard(t["id"])
+                rerendered.append(t["id"])
+            except Exception:
+                pass
+        return JSONResponse({"ok": True, "message": "All custom metrics deleted", "rerendered": rerendered})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
 

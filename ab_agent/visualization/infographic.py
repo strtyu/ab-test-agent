@@ -883,25 +883,6 @@ async function handleRemoveMetric(name,display){
   }catch(e){appendMsg('ai','Error: '+e.message);}
 }
 </script>
-<script>
-(function(){
-  try{
-    var s=localStorage.getItem('ab_chat_'+TEST_ID);
-    if(s){
-      var d=JSON.parse(s);
-      // Support both old format {analysis:[]} and new format {history:{...},mode:'metrics'}
-      var savedHistory=d.history||d;
-      var savedMode=d.mode||'analysis';
-      Object.assign(historyByMode,savedHistory);
-      switchMode(savedMode);
-      var hasHistory=Object.values(savedHistory).some(function(arr){return Array.isArray(arr)&&arr.length>0;});
-      if(hasHistory){toggleChat();}
-    }else{
-      switchMode('analysis');
-    }
-  }catch(e){switchMode('analysis');}
-})();
-</script>
 <button class="chat-fab" id="chat-fab" onclick="toggleChat()">&#128172; Ask AI</button>
 <div class="chat-panel" id="chat-panel">
   <div class="chat-phdr">
@@ -958,6 +939,24 @@ async function handleRemoveMetric(name,display){
     </div>
   </div>
 </div>
+<script>
+(function(){
+  try{
+    var s=localStorage.getItem('ab_chat_'+TEST_ID);
+    if(s){
+      var d=JSON.parse(s);
+      var savedHistory=d.history||d;
+      var savedMode=d.mode||'analysis';
+      Object.assign(historyByMode,savedHistory);
+      switchMode(savedMode);
+      var hasHistory=Object.values(savedHistory).some(function(arr){return Array.isArray(arr)&&arr.length>0;});
+      if(hasHistory){toggleChat();}
+    }else{
+      switchMode('analysis');
+    }
+  }catch(e){switchMode('analysis');}
+})();
+</script>
 </body>
 </html>"""
 
