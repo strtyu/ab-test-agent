@@ -836,8 +836,12 @@ async function handleRemoveMetric(name,display){
       body:JSON.stringify({name:name,display:display})
     });
     const d=await r.json();
-    if(d.ok){appendMsg('ai','\u2705 Metric "'+display+'" removed. Reloading\u2026');setTimeout(()=>window.location.reload(),1500);}
-    else{appendMsg('ai','Failed: '+(d.error||'unknown'));}
+    if(d.ok){
+      appendMsg('ai','\u2705 Metric "'+display+'" removed. Updating dashboard\u2026');
+      // Trigger server-side re-render so the column disappears immediately on reload
+      await fetch('/api/tests/'+TEST_ID+'/rerender-dashboard',{method:'POST'});
+      setTimeout(()=>window.location.reload(),800);
+    }else{appendMsg('ai','Failed: '+(d.error||'unknown'));}
   }catch(e){appendMsg('ai','Error: '+e.message);}
 }
 </script>

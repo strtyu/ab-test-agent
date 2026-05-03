@@ -797,7 +797,49 @@ async def test_dashboard(test_id: str):
     return HTMLResponse("<h2>No dashboard available yet. Try refreshing.</h2>", status_code=404)
 
 
-@router.post("/api/tests/{test_id}/chat")
+@router.get("/api/tests/{test_id}/snapshot-debug")
+async def snapshot_debug(test_id: str):
+    """Debug: show what's in the latest snapshot."""
+    try:
+        snap = SnapshotRepo().latest(test_id)
+        if not snap:
+            return JSONResponse({"ok": False, "error": "No snapshot"})
+        rows_json = snap.get("rows_json") or ""
+        dash_html = snap.get("dashboard_html") or ""
+        custom_metrics = [m.get("name") for m in CustomMetricRepo().list_all()]
+        return JSONResponse({
+            "ok": True,
+            "snapshot_id": snap.get("id"),
+            "created_at": str(snap.get("created_at")),
+            "rows_json_len": len(rows_json),
+            "dashboard_html_len": len(dash_html),
+            "custom_metrics_in_db": custom_metrics,
+            "unsub_in_html": "unsub" in dash_html.lower() if dash_html else None,
+            "unsub24h_in_html": "24h" in dash_html if dash_html else None,
+        })
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
+
+
+@router.post("/api/tests/{test_id}/rerender-dashboard")
+async def rerender_dashboard(test_id: str):
+    """Force re-render the dashboard from rows_json (or trigger a full BQ refresh if rows_json is empty)."""
+    try:
+        snap = SnapshotRepo().latest(test_id)
+        rows_json = (snap.get("rows_json") or "") if snap else ""
+        if rows_json:
+            _rerender_dashboard(test_id)
+            return JSONResponse({"ok": True, "method": "rerender_from_rows_json"})
+        else:
+            # rows_json is empty — need a full refresh from BQ
+            from ab_agent.pipeline.refresh_pipeline import _do_refresh
+            _do_refresh(test_id)
+            return JSONResponse({"ok": True, "method": "full_bq_refresh"})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
+
+
+
 async def api_test_chat(test_id: str, request: Request):
     test = TestRepo().get(test_id)
     if not test:
