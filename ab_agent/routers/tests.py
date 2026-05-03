@@ -793,7 +793,14 @@ async def test_dashboard(test_id: str):
 
     stored = snap.get("dashboard_html") or ""
     if stored:
-        return HTMLResponse(content=stored)
+        # rows_json missing (old snapshot) — inject auto-rerender so stale columns disappear on next load
+        inject = (
+            f'<script>'
+            f'fetch("/api/tests/{test_id}/rerender-dashboard",{{method:"POST"}})'
+            f'.then(()=>setTimeout(()=>location.reload(),2500));'
+            f'</script>'
+        )
+        return HTMLResponse(content=stored.replace("</body>", inject + "</body>", 1) if "</body>" in stored else stored + inject)
     return HTMLResponse("<h2>No dashboard available yet. Try refreshing.</h2>", status_code=404)
 
 
@@ -905,24 +912,20 @@ async def api_run_diagnostic(test_id: str, request: Request):
 async def api_remove_metric(test_id: str, request: Request):
     try:
         body = await request.json()
-        name = body.get("name", "").strip()
-        display = body.get("display", "").strip()
+        name = (body.get("name") or "").strip()
+        display = (body.get("display") or "").strip()
         if not name and not display:
             return JSONResponse({"ok": False, "error": "No metric name provided"})
         repo = CustomMetricRepo()
         deleted = []
-        # Delete by exact name
+        # Delete by exact name key
         if name:
             repo.delete(name)
             deleted.append(name)
-        # Also delete any metrics sharing the same display_name (removes duplicates)
+        # Delete all records sharing the same display_name (handles duplicates & null-name records)
         if display:
-            for m in repo.list_all():
-                m_name = m.get("name") or ""
-                m_display = m.get("display_name") or ""
-                if m_display == display and m_name not in deleted:
-                    repo.delete(m_name)
-                    deleted.append(m_name)
+            repo.delete_by_display_name(display)
+            deleted.append(f"(display:{display})")
         _rerender_dashboard(test_id)
         return JSONResponse({"ok": True, "deleted": deleted})
     except Exception as e:
@@ -990,11 +993,7 @@ async def admin_delete_metric(name: str):
 async def admin_clear_all_metrics():
     """Debug endpoint: delete ALL custom metrics."""
     try:
-        from ab_agent.db.database import get_connection
-        conn = get_connection()
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM custom_metrics")
-        conn.commit()
+        CustomMetricRepo().clear_all()
         return JSONResponse({"ok": True, "message": "All custom metrics deleted"})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})

@@ -182,3 +182,13 @@ class CustomMetricRepo:
 
     def delete(self, name: str) -> None:
         _execute(get_connection(), "DELETE FROM custom_metrics WHERE name=%s", (name,))
+
+    def delete_by_display_name(self, display_name: str) -> int:
+        """Delete all metrics matching display_name (case-insensitive). Returns count deleted."""
+        conn = get_connection()
+        _execute(conn, "DELETE FROM custom_metrics WHERE LOWER(display_name)=LOWER(%s)", (display_name,))
+        return 1  # psycopg2 doesn't easily return rowcount via our wrapper
+
+    def clear_all(self) -> None:
+        """Delete every custom metric record."""
+        _execute(get_connection(), "DELETE FROM custom_metrics", ())

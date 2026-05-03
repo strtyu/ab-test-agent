@@ -90,10 +90,11 @@ To ADD a metric, follow the same rules as in analysis mode:
 To REMOVE a metric:
 - Confirm with the user which metric they want to remove
 - Warn that this removes it from ALL dashboards permanently
-- Then output EXACTLY:
+- Then output EXACTLY (use display name if name key is empty/unknown):
 <remove_metric>
-{"name":"snake_key","display":"Human Name"}
+{"name":"snake_key_or_empty","display":"Human Name"}
 </remove_metric>
+- IMPORTANT: Even if name is empty string, always include the display field — it is used to delete by display_name as fallback
 
 The current custom metrics on this dashboard are listed in the context below.
 """
@@ -238,17 +239,18 @@ class DashboardChatAgent:
                 else:
                     lines.append(f"  {lbl}: ctrl={cv}  test={tv}")
 
-        if mode == "metrics" and custom_metrics:
+        if mode == "metrics" and custom_metrics is not None:
             lines.append("\nCurrent custom metrics on this dashboard:")
+            named = []
             for cm in custom_metrics:
-                # Handle both DB format {name, display_name, js_expr} and JS format {k, l, expr}
                 name = cm.get('name') or cm.get('k') or ''
                 disp = cm.get('display_name') or cm.get('l') or name
                 expr = cm.get('js_expr') or cm.get('expr') or ''
-                if name:
+                if name or disp:
+                    named.append((name, disp, expr))
                     lines.append(f"  name={name!r}  display={disp!r}  expr={expr}")
-            if not any(cm.get('name') or cm.get('k') for cm in custom_metrics):
-                lines.append("  (no named metrics found)")
+            if not named:
+                lines.append("  (no custom metrics defined)")
         elif mode == "metrics":
             lines.append("\nNo custom metrics defined yet.")
 
