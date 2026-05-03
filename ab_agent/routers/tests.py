@@ -19,15 +19,34 @@ router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 
+def _do_initial_refresh(test_id: str) -> None:
+    """Kick off a full BQ refresh for a newly created or edited test (best-effort)."""
+    try:
+        from ab_agent.pipeline.refresh_pipeline import _do_refresh
+        _do_refresh(test_id)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Initial refresh failed for %s", test_id)
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 def _inject_sql_field(base_sql: str, field_expr: str) -> str:
-    """Inject a SELECT field expression into base_sql just before the top-level FROM clause."""
+    """Inject a SELECT field expression into base_sql just before the outer FROM clause."""
     import re as _re
-    expr = field_expr.strip().rstrip(",")
-    m = _re.search(r'\n(from\s+`)', base_sql, _re.IGNORECASE)
-    if m:
-        pos = m.start()
+    # Strip markdown code fences and any leading label text the AI may have added
+    expr = field_expr.strip()
+    expr = _re.sub(r'^```\w*\s*', '', expr)
+    expr = _re.sub(r'```\s*$', '', expr)
+    # Drop any leading line that looks like a label (no SQL keywords)
+    lines = [l for l in expr.splitlines() if _re.search(r'\b(case|when|then|else|end|select|cast|if|coalesce|timestamp)\b', l, _re.IGNORECASE)]
+    expr = '\n'.join(lines).strip().rstrip(",")
+    if not expr:
+        return base_sql
+    # Find the LAST `\nfrom `` in the SQL (outer SELECT's FROM, not a CTE's FROM)
+    matches = list(_re.finditer(r'\n(from\s+`)', base_sql, _re.IGNORECASE))
+    if matches:
+        pos = matches[-1].start()
         return base_sql[:pos] + f",\n  {expr}" + base_sql[pos:]
     return base_sql
 
@@ -785,6 +804,16 @@ async def delete_test(test_id: str):
 @router.get("/tests/{test_id}/dashboard")
 async def test_dashboard(test_id: str):
     test = TestRepo().get(test_id)
+    # Auto-clear broken custom_sql fragment from DB on dashboard load
+    if test:
+        try:
+            _cfg = ABTestConfig.model_validate_json(test["config_json"])
+            if _cfg.custom_sql and not _sanitize_custom_sql(_cfg.custom_sql):
+                _cfg = _cfg.model_copy(update={"custom_sql": ""})
+                TestRepo().update_config(test_id, _cfg.model_dump_json())
+                test = TestRepo().get(test_id)
+        except Exception:
+            pass
     snap = SnapshotRepo().latest(test_id)
     if not snap:
         return HTMLResponse("<h2>No dashboard available yet. Try refreshing.</h2>", status_code=404)
