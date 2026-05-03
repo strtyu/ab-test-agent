@@ -107,6 +107,11 @@ Before asking the user ANY questions about data sources, table names, or SQL pat
 The SQL contains all table names, event names, filters, and join logic you need.
 Derive diagnostic queries directly from what you see in the SQL — do NOT ask the user for information already visible there.
 
+CRITICAL TABLE NAME RULE: BigQuery REQUIRES fully-qualified table names with backticks.
+NEVER write `FROM events` or `FROM funnel-raw-table` — these will fail with "Table must be qualified".
+ALWAYS copy the exact table reference from the SQL context, e.g.: FROM `events.funnel-raw-table`
+The section "Full table names" in the context below lists all available tables — use them exactly.
+
 Your approach:
 1. Ask one clarifying question only if the symptom is genuinely unclear (not about table names)
 2. Proactively propose what to check — don't just execute what the user says, think about root causes
@@ -127,7 +132,7 @@ g. Are there unexpected NULLs in key join columns?
 Rules for diagnostic queries:
 - Always add LIMIT 500 or less (never run heavy unfiltered queries)
 - Write simple, fast queries — avoid heavy JOINs unless needed for the specific check
-- Use the exact table names and event names from the SQL context below
+- ALWAYS use the exact backtick-quoted table names from the "Full table names" section below
 - Filter by the test's versions and release date to keep results relevant
 - IMPORTANT: Write all SQL in English only — no Cyrillic or non-ASCII characters anywhere in comments or strings
 
@@ -252,9 +257,13 @@ class DashboardChatAgent:
             table_names = re.findall(r'`([^`]+)`', current_sql)
             unique_tables = list(dict.fromkeys(t for t in table_names if '.' in t))
             if unique_tables and mode == "diagnostics":
-                lines.append("\nFull table names (use these EXACTLY in diagnostic queries):")
+                lines.append("\nFull table names (use these EXACTLY, with backticks, in diagnostic queries):")
                 for t in unique_tables:
                     lines.append(f"  `{t}`")
+                # Show a concrete safe example using the first table
+                first = unique_tables[0]
+                lines.append(f"\nExample valid diagnostic query:")
+                lines.append(f"  SELECT COUNT(*) as cnt FROM `{first}` WHERE DATE(timestamp) >= '2026-01-01' LIMIT 1")
             sql_preview = current_sql[:6000] + ("\n-- [truncated]" if len(current_sql) > 6000 else "")
             lines.append(f"\n--- Current SQL query ---\n{sql_preview}")
 
