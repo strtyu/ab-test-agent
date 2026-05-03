@@ -764,8 +764,9 @@ async def test_dashboard(test_id: str):
                     custom_metrics=custom_metrics,
                 )
                 return HTMLResponse(content=html)
-        except Exception:
-            pass
+        except Exception as _dash_err:
+            import logging as _logging
+            _logging.getLogger(__name__).error("Dashboard render from rows_json failed: %s", _dash_err)
 
     stored = snap.get("dashboard_html") or ""
     if stored:

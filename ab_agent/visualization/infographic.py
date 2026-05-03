@@ -611,6 +611,8 @@ render();
 let chatOpen=false, pendingMetric=null, pendingSql=null, pendingMetricAfterSql=null;
 let currentMode='analysis';
 const historyByMode={analysis:[],metrics:[],diagnostics:[]};
+function _chatKey(){return 'ab_chat_'+TEST_ID;}
+function saveChatHistory(){try{localStorage.setItem(_chatKey(),JSON.stringify(historyByMode));}catch(e){}}
 const MODE_GREET={
   analysis:'Hi! I can see the current test data. Ask me anything about the results.',
   metrics:'I can help manage metrics on this dashboard \u2014 add new ones or remove existing ones. What would you like to do?',
@@ -627,6 +629,14 @@ function switchMode(m){
   document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
   const c=document.getElementById('chat-msgs');
   c.innerHTML='<div class="chat-msg ai">'+escHtml(MODE_GREET[m])+'</div>';
+  historyByMode[m].forEach(function(msg){
+    const div=document.createElement('div');
+    div.className='chat-msg '+(msg.role==='user'?'user':'ai');
+    if(msg.role==='assistant'){div.innerHTML=md2html(msg.content);}
+    else{div.textContent=msg.content;}
+    c.appendChild(div);
+  });
+  c.scrollTop=9999;
 }
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function md2html(t){
@@ -725,6 +735,7 @@ async function runDiagnosticQuery(sql){
       +result.rows.slice(0,8).map(r=>r.join(' | ')).join('\n'))
     :('Query error: '+result.error);
   historyByMode[currentMode].push({role:'user',content:'[Query result]\n'+summary});
+  saveChatHistory();
   const thk2=document.createElement('div');
   thk2.className='chat-msg thinking';thk2.textContent='Analyzing\u2026';
   wrap.appendChild(thk2);wrap.scrollTop=9999;
@@ -733,6 +744,7 @@ async function runDiagnosticQuery(sql){
     thk2.remove();
     if(data.reply)appendMsg('ai',data.reply);
     historyByMode[currentMode].push({role:'assistant',content:data.reply||''});
+    saveChatHistory();
     await handleActions(data.actions||(data.action?[data.action]:[]));
   }catch(e){thk2.remove();appendMsg('ai','Error: '+e.message);}
 }
@@ -742,6 +754,7 @@ async function sendChat(){
   inp.value='';
   appendMsg('user',msg);
   historyByMode[currentMode].push({role:'user',content:msg});
+  saveChatHistory();
   const btn=document.getElementById('chat-send');
   btn.disabled=true;
   const thk=document.createElement('div');
@@ -753,6 +766,7 @@ async function sendChat(){
     removeThinking();
     if(data.reply)appendMsg('ai',data.reply);
     historyByMode[currentMode].push({role:'assistant',content:data.reply||''});
+    saveChatHistory();
     await handleActions(data.actions||(data.action?[data.action]:[]));
   }catch(e){removeThinking();appendMsg('ai','Error: '+e.message);}
   finally{btn.disabled=false;}
@@ -824,8 +838,12 @@ async function handleRemoveMetric(name,display){
   }catch(e){appendMsg('ai','Error: '+e.message);}
 }
 </script>
-
-<button class="chat-fab" id="chat-fab" onclick="toggleChat()">&#128172; Ask AI</button>
+<script>
+(function(){
+  try{var s=localStorage.getItem('ab_chat_'+TEST_ID);if(s){var d=JSON.parse(s);Object.assign(historyByMode,d);}}catch(e){}
+  switchMode('analysis');
+})();
+</script> id="chat-fab" onclick="toggleChat()">&#128172; Ask AI</button>
 <div class="chat-panel" id="chat-panel">
   <div class="chat-phdr">
     <span>AI Assistant</span>
