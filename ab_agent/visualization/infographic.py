@@ -648,8 +648,16 @@ function md2html(t){
   let out='',inUl=false;
   for(let raw of lines){
     const l=raw.trimEnd();
+    const hm=l.match(/^(#{1,3})\s+(.*)/);
     const bullet=l.match(/^[-*\u2022]\s+(.*)/);
-    if(bullet){
+    if(hm){
+      if(inUl){out+='</ul>';inUl=false;}
+      const sz=hm[1].length===1?'14px':hm[1].length===2?'13px':'12.5px';
+      out+='<b style="font-size:'+sz+';display:block;margin:5px 0 2px">'+fmtInline(escHtml(hm[2]))+'</b>';
+    }else if(/^-{3,}$|^\*{3,}$|^_{3,}$/.test(l)){
+      if(inUl){out+='</ul>';inUl=false;}
+      out+='<hr style="border:none;border-top:1px solid #CBD5E1;margin:5px 0">';
+    }else if(bullet){
       if(!inUl){out+='<ul style="margin:4px 0 4px 16px;padding:0">';inUl=true;}
       out+='<li>'+fmtInline(escHtml(bullet[1]))+'</li>';
     }else{
