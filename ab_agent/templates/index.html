@@ -75,6 +75,10 @@
   <div class="actions">
     <a href="/tests/{{ t.id }}" class="btn btn-outline btn-sm">View Details</a>
     <a href="/tests/{{ t.id }}/dashboard" class="btn btn-outline btn-sm" target="_blank">Dashboard</a>
+    <form method="post" action="/tests/{{ t.id }}/delete" style="display:inline"
+          onsubmit="return confirm('Delete «{{ t.test_name }}»? This cannot be undone.')">
+      <button type="submit" class="btn btn-sm" style="background:#FEE2E2;color:#B91C1C;border:1px solid #FECACA">Delete</button>
+    </form>
   </div>
 </div>
 {% endfor %}
