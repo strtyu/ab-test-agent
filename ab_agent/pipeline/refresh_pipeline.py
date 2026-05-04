@@ -57,7 +57,7 @@ def _do_refresh(test_id: str) -> None:
     render_summary_png(ctrl_m, test_m, config, png_path)
 
     from ab_agent.db.repository import CustomMetricRepo
-    custom_metrics = CustomMetricRepo().list_all()
+    custom_metrics = CustomMetricRepo().list_for_test(test_id)
     dashboard_html = render_html_dashboard_string(
         rows, config, ctrl_versions_clean, test_versions_clean,
         test_id=test_id,
