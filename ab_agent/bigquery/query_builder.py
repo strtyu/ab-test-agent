@@ -408,8 +408,7 @@ select
   end as unsubscribe_timestamp,
   purch_count,
   purch_amount,
-  ticket_count,
-  ltv_tbl.ltv
+  ticket_count
 
 from `events.funnel-raw-table` fun
 
@@ -451,9 +450,6 @@ left join intercom_tickets it
   on json_value(fun.event_metadata, '$.email') = it.author_email
   and json_value(fun.event_metadata, '$.email') is not null
   and json_value(fun.event_metadata, '$.email') != ''
-
-left join `hopeful-list-429812-f3.analytics_draft.ltv_ml_fast` ltv_tbl
-  on fun.user_id = cast(ltv_tbl.customer_account_id as string)
 
 where 1=1
   and fun.event_name = "pr_funnel_subscribe"
