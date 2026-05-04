@@ -117,7 +117,7 @@ def _prep_user_level(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     for col in ("ticket_count", "purch_amount", "purch_count"):
         df[col] = pd.to_numeric(df.get(col, 0), errors="coerce").fillna(0)
-    df["ltv"] = pd.to_numeric(df.get("ltv", np.nan), errors="coerce").fillna(0)
+    df["ltv"] = pd.to_numeric(df["ltv"], errors="coerce").fillna(0) if "ltv" in df.columns else 0.0
     df["is_ticket"] = (df["ticket_count"] != 0).astype(int)
 
     agg_spec = {
