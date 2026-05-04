@@ -5,7 +5,10 @@ from typing import Dict, List, Optional, Set
 
 from ab_agent.core.models import ABTestConfig, VersionGroup
 
-_UPSELL_VERSION_EXPR = 'json_value(fun.event_metadata, "$.upsell_version")'
+_UPSELL_VERSION_EXPR = """coalesce(
+        json_value(ups_view.event_metadata, "$.upsell_version"),
+        regexp_extract(ups_view.referrer, r'[?&]upsell_version=([^&]+)')
+      )"""
 
 _CHANNEL_SQL = {
     "primer": "json_value(fun.event_metadata, '$.channel') = 'primer'",
@@ -95,7 +98,8 @@ def _build_singlechannel_blocks(control: VersionGroup, test: VersionGroup) -> st
             blocks.append(
                 f"    -- {side}: {', '.join(vers)}, order {order.order_number}\n"
                 f"    (\n"
-                f"      {_UPSELL_VERSION_EXPR}\n"
+                f"      json_value(ups_view.event_metadata, '$.upsell_order') = '{order.order_number}'\n"
+                f"      and {_UPSELL_VERSION_EXPR}\n"
                 f"          in ({ver_csv})\n"
                 f"      and cash.rebill_count in ({rebills}){extra}\n"
                 f"    )"
@@ -171,7 +175,8 @@ def _build_multichannel_blocks(control: VersionGroup, test: VersionGroup) -> str
             blocks.append(
                 f"    -- {channel}, order {order_num}: ctrl={ctrl_lbl} / test={test_lbl}\n"
                 f"    (\n"
-                f"      {ch_sql}\n"
+                f"      json_value(ups_view.event_metadata, '$.upsell_order') = '{order_num}'\n"
+                f"      and {ch_sql}\n"
                 f"      and {_UPSELL_VERSION_EXPR}\n"
                 f"          in ({ver_csv})\n"
                 f"      and cash.rebill_count in ({_int_csv(sorted(rebills))})\n"
@@ -213,7 +218,7 @@ def _extra_where(config: ABTestConfig) -> str:
     if config.filters.exclude_countries:
         lines.append(f"  and fun.country_code not in ({_str_csv(config.filters.exclude_countries)})")
     if config.filters.exclude_ips:
-        lines.append(f"  and fun.ip not in ({_str_csv(config.filters.exclude_ips)})")
+        lines.append(f"  and ups_view.ip not in ({_str_csv(config.filters.exclude_ips)})")
     for cond in config.filters.extra_conditions:
         lines.append(f"  and {cond}")
     if _is_multichannel(config.control.versions) or _is_multichannel(config.test.versions):
@@ -242,8 +247,7 @@ def build_query(config: ABTestConfig, end_date=None) -> str:
     country_cte = _country_filter(config)
     extra_where = _extra_where(config)
 
-    end_filter = f'\n    and fun.timestamp <= "{ts_end}"' if ts_end else ""
-    ups_end_filter = f'\n    and timestamp <= "{ts_end}"' if ts_end else ""
+    end_filter = f'\n    and ups_view.timestamp <= "{ts_end}"' if ts_end else ""
     cash_end_filter = f'\n    and TIMESTAMP_MICROS(app.created_at) <= "{ts_end}"' if ts_end else ""
 
     return f"""\
@@ -359,8 +363,11 @@ select
   json_value(fun.event_metadata, "$.subscription_id") as subscription_id,
   json_value(fun.event_metadata, "$.funnel_version") as funnel_version,
   json_value(fun.event_metadata, "$.quiz_version") as quiz_version,
-  json_value(fun.event_metadata, "$.upsell_version") as split,
-  null as upsell_order,
+  coalesce(
+    json_value(ups_view.event_metadata, "$.upsell_version"),
+    regexp_extract(ups_view.referrer, r'[?&]upsell_version=([^&]+)')
+  ) as split,
+  json_value(ups_view.event_metadata, '$.upsell_order') as upsell_order,
   case
     when json_value(fun.event_metadata, '$.age') = '' or json_value(fun.event_metadata, '$.age') is null then 'other'
     else json_value(fun.event_metadata, '$.age')
@@ -368,26 +375,32 @@ select
   up.user_path,
   reg.user_agent,
   fun.user_id,
-  case when ups_view.user_id is not null then 1 else 0 end as ups_view,
-  0 as ups_ttp,
-  case when ups_purch.user_id is not null then 1 else 0 end as ups_purched,
-  cast(null as int64) as diff_ms,
+  case when ups_view.event_id is null then 0 else 1 end as ups_view,
+  case when ups_ttp.event_id is null then 0 else 1 end as ups_ttp,
+  case when ups_purch.event_id is null then 0 else 1 end as ups_purched,
+  TIMESTAMP_DIFF(
+    first_value(ups_ttp.timestamp ignore nulls)
+      over (partition by ups_ttp.user_id order by ups_ttp.timestamp asc),
+    first_value(ups_view.timestamp ignore nulls)
+      over (partition by ups_view.user_id order by ups_view.timestamp asc),
+    MILLISECOND
+  ) as diff_ms,
   case
-    when ups_purch.user_id is not null
+    when ups_purch.event_id is not null
     and unsub.event_id is not null
     and timestamp_diff(unsub.timestamp, fun.timestamp, hour) <= 12
     then 1
     else 0
   end as unsub12h,
   case
-    when ups_purch.user_id is not null
+    when ups_purch.event_id is not null
     and unsub.event_id is not null
     and timestamp_diff(unsub.timestamp, fun.timestamp, hour) <= 24
     then 1
     else 0
   end as unsub24h,
   case
-    when ups_purch.user_id is not null
+    when ups_purch.event_id is not null
       and unsub.event_id is not null
       and timestamp_diff(unsub.timestamp, fun.timestamp, hour) <= 12
     then unsub.timestamp
@@ -403,21 +416,22 @@ inner join `events.app-raw-table` reg
   on reg.event_name = "pr_webapp_registration_signup_click"
   and reg.user_id = fun.user_id
 
-left join (
-  select user_id
-  from `events.app-raw-table`
-  where event_name = 'pr_webapp_upsell_view'
-    and timestamp >= "{ts}"{ups_end_filter}
-  group by user_id
-) ups_view on ups_view.user_id = fun.user_id
+left join `events.app-raw-table` ups_view
+  on ups_view.event_name = "pr_webapp_upsell_view"
+  and json_value(ups_view.query_parameters, '$.source') = 'register'
+  and ups_view.user_id = fun.user_id
 
-left join (
-  select user_id
-  from `events.funnel-raw-table`
-  where event_name = 'pr_funnel_upsell_success'
-    and timestamp >= "{ts}"{ups_end_filter}
-  group by user_id
-) ups_purch on ups_purch.user_id = fun.user_id
+left join `events.app-raw-table` ups_ttp
+  on ups_ttp.event_name = "pr_webapp_upsell_purchase_click"
+  and json_value(ups_ttp.query_parameters, '$.source') = 'register'
+  and ups_ttp.user_id = fun.user_id
+  and json_value(ups_ttp.event_metadata, '$.upsell_order') = json_value(ups_view.event_metadata, '$.upsell_order')
+
+left join `events.app-raw-table` ups_purch
+  on ups_purch.event_name = "pr_webapp_upsell_successful_purchase"
+  and json_value(ups_purch.query_parameters, '$.source') = 'register'
+  and ups_purch.user_id = fun.user_id
+  and json_value(ups_purch.event_metadata, '$.upsell_order') = json_value(ups_view.event_metadata, '$.upsell_order')
 
 left join `events.app-raw-table` unsub
   on fun.user_id = unsub.user_id
@@ -439,7 +453,7 @@ left join intercom_tickets it
 
 where 1=1
   and fun.event_name = "pr_funnel_subscribe"
-  and fun.timestamp >= "{ts}"{end_filter}
+  and ups_view.timestamp >= "{ts}"{end_filter}
   and {_UPSELL_VERSION_EXPR}
       in (
         {all_versions}
