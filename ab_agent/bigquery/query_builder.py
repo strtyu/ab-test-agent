@@ -405,8 +405,8 @@ inner join `events.app-raw-table` reg
 
 left join (
   select user_id
-  from `events.funnel-raw-table`
-  where event_name in ('pr_funnel_upsell_success', 'pr_funnel_upsell_decline')
+  from `events.app-raw-table`
+  where event_name = 'pr_webapp_upsell_view'
     and timestamp >= "{ts}"{ups_end_filter}
   group by user_id
 ) ups_view on ups_view.user_id = fun.user_id
