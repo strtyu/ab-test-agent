@@ -181,6 +181,12 @@ Rules for diagnostic queries:
 - Filter by the test's versions and release date to keep results relevant
 - IMPORTANT: Write all SQL in English only — no Cyrillic or non-ASCII characters anywhere in comments or strings
 
+BREVITY RULE (strict):
+- Before running a query: write AT MOST 1 sentence explaining what you are checking. Then immediately output <run_query>.
+- Do NOT write analysis, hypotheses, or explanations before seeing the results.
+- After seeing results: write 2-3 sentences of interpretation, then either output the next <run_query> or your conclusion.
+- Never write more than 3 sentences total before or after a query in any single message.
+
 Output ONE <run_query> per message. After seeing results, interpret and suggest the next step.
 """
 

@@ -201,6 +201,8 @@ tbody tr:last-child td{border-bottom:none}
   cursor:pointer;font-size:14px;flex-shrink:0;transition:background .12s}
 #chat-send:hover{background:#1255D6}
 #chat-send:disabled{background:#CBD5E1;cursor:default}
+#chat-send.stopping{background:#EF4444}
+#chat-send.stopping:hover{background:#DC2626}
 .chat-modes{display:flex;border-bottom:1px solid #E2E8F0}
 .chat-modes .mode-btn{flex:1;padding:7px 4px;font-size:10.5px;font-weight:600;border:none;background:none;
   cursor:pointer;color:#94A3B8;border-bottom:2px solid transparent;transition:all .15s;line-height:1.3}
@@ -695,12 +697,27 @@ function appendQueryTable(result){
   d.innerHTML=h;wrap.appendChild(d);wrap.scrollTop=9999;
 }
 function removeThinking(){const t=document.querySelector('.chat-msg.thinking');if(t)t.remove();}
+let _chatAbort=null;
+function setChatRunning(on){
+  const btn=document.getElementById('chat-send');
+  const inp=document.getElementById('chat-input');
+  if(on){
+    btn.classList.add('stopping');btn.textContent='■';
+    btn.onclick=function(){if(_chatAbort){_chatAbort.abort();_chatAbort=null;}};
+    inp.disabled=true;
+  }else{
+    btn.classList.remove('stopping');btn.textContent='→';
+    btn.onclick=sendChat;inp.disabled=false;inp.focus();
+  }
+}
 async function callChatAPI(message,metricsOverride){
   const vr=getRows();
   const cM=calcM(vr.filter(r=>r.grp==='ctrl'));
   const tM=calcM(vr.filter(r=>r.grp==='test'));
+  _chatAbort=new AbortController();
   const res=await fetch('/api/tests/'+TEST_ID+'/chat',{
     method:'POST',headers:{'Content-Type':'application/json'},
+    signal:_chatAbort.signal,
     body:JSON.stringify({
       message:message,
       history:historyByMode[currentMode].slice(-20),
@@ -730,7 +747,7 @@ async function handleActions(actions){
   }
   const removeActs=actions.filter(a=>a.type==='remove_metric');
   for(const ra of removeActs) await handleRemoveMetric(ra.name,ra.display||ra.name);
-  if(queryAct) await runDiagnosticQuery(queryAct.sql);
+  if(queryAct){setChatRunning(true);await runDiagnosticQuery(queryAct.sql);}
 }
 async function runDiagnosticQuery(sql){
   const wrap=document.getElementById('chat-msgs');
@@ -739,12 +756,17 @@ async function runDiagnosticQuery(sql){
   wrap.appendChild(thk);wrap.scrollTop=9999;
   let result;
   try{
+    const abort=new AbortController();
     const res=await fetch('/api/tests/'+TEST_ID+'/run-diagnostic',{
       method:'POST',headers:{'Content-Type':'application/json'},
+      signal:abort.signal,
       body:JSON.stringify({sql:sql})
     });
     result=await res.json();
-  }catch(e){result={ok:false,error:e.message};}
+  }catch(e){
+    if(e.name==='AbortError'){thk.remove();return;}
+    result={ok:false,error:e.message};
+  }
   thk.remove();
   appendQueryTable(result);
   const summary=result.ok
@@ -762,7 +784,10 @@ async function runDiagnosticQuery(sql){
     historyByMode[currentMode].push({role:'assistant',content:data.reply||''});
     saveChatHistory();
     await handleActions(data.actions||(data.action?[data.action]:[]));
-  }catch(e){thk2.remove();appendMsg('ai','Error: '+e.message);}
+  }catch(e){
+    thk2.remove();
+    if(e.name!=='AbortError')appendMsg('ai','Error: '+e.message);
+  }finally{setChatRunning(false);_chatAbort=null;}
 }
 async function sendChat(){
   const inp=document.getElementById('chat-input');
@@ -771,8 +796,7 @@ async function sendChat(){
   appendMsg('user',msg);
   historyByMode[currentMode].push({role:'user',content:msg});
   saveChatHistory();
-  const btn=document.getElementById('chat-send');
-  btn.disabled=true;
+  setChatRunning(true);
   const thk=document.createElement('div');
   thk.className='chat-msg thinking';thk.textContent='Thinking\u2026';
   document.getElementById('chat-msgs').appendChild(thk);
@@ -784,8 +808,10 @@ async function sendChat(){
     historyByMode[currentMode].push({role:'assistant',content:data.reply||''});
     saveChatHistory();
     await handleActions(data.actions||(data.action?[data.action]:[]));
-  }catch(e){removeThinking();appendMsg('ai','Error: '+e.message);}
-  finally{btn.disabled=false;}
+  }catch(e){
+    removeThinking();
+    if(e.name!=='AbortError')appendMsg('ai','Error: '+e.message);
+  }finally{setChatRunning(false);_chatAbort=null;}
 }
 // ── Add metric modal ──────────────────────────────────────────────────────────
 function openMetricModal(m){
