@@ -137,6 +137,26 @@ NEVER write `FROM events` or `FROM funnel-raw-table` — these will fail with "T
 ALWAYS copy the exact table reference from the SQL context, e.g.: FROM `events.funnel-raw-table`
 The section "Full table names" in the context below lists all available tables — use them exactly.
 
+KNOWN EVENT TABLE STRUCTURE (authoritative — do not second-guess this):
+- `events.app-raw-table` contains ALL upsell webapp events:
+    pr_webapp_upsell_view           -- upsell page view; has upsell_version in event_metadata + referrer fallback
+    pr_webapp_upsell_purchase_click -- user clicked purchase (TTP)
+    pr_webapp_upsell_successful_purchase
+    pr_webapp_upsell_unsuccessful_purchase
+    pr_webapp_upsell_skip_click
+    pr_webapp_registration_signup_click
+    pr_webapp_unsubscribed
+  The upsell_version field lives in event_metadata of these app-raw-table events.
+  Filter: json_value(query_parameters, '$.source') = 'register' scopes to post-registration upsell flow.
+
+- `events.funnel-raw-table` contains funnel events:
+    pr_funnel_subscribe             -- main subscribe event; does NOT reliably carry upsell_version
+    pr_funnel_email_submit
+    pr_funnel_scale_path / escape_path / simplify_path / starter_path
+  Do NOT look for upsell_version in funnel-raw-table — it is not there.
+
+When diagnosing upsell view counts, ALWAYS start with `events.app-raw-table` and event_name = 'pr_webapp_upsell_view'.
+
 Your approach:
 1. Ask one clarifying question only if the symptom is genuinely unclear (not about table names)
 2. Proactively propose what to check — don't just execute what the user says, think about root causes
@@ -146,7 +166,7 @@ Your approach:
 6. Be systematic: start broad, then narrow down
 
 Common issues to check (roughly in order of likelihood):
-a. Any events for these versions since release? (simplest count check)
+a. Any events for these versions since release? (simplest count check in app-raw-table)
 b. Assignment counts — are users being assigned at all?
 c. Are the specific order numbers present in events?
 d. Are event_metadata fields non-null for these users?
@@ -291,7 +311,7 @@ class DashboardChatAgent:
                 first = unique_tables[0]
                 lines.append(f"\nExample valid diagnostic query:")
                 lines.append(f"  SELECT COUNT(*) as cnt FROM `{first}` WHERE DATE(timestamp) >= '2026-01-01' LIMIT 1")
-            sql_preview = current_sql[:6000] + ("\n-- [truncated]" if len(current_sql) > 6000 else "")
+            sql_preview = current_sql[:12000] + ("\n-- [truncated]" if len(current_sql) > 12000 else "")
             lines.append(f"\n--- Current SQL query ---\n{sql_preview}")
 
         return "\n".join(lines)
